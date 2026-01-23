@@ -88,6 +88,22 @@ class IndoorDetailResponse(BaseModel):
         from_attributes = True
 
 
+class IndoorCreateRequest(BaseModel):
+    name: str
+    temp_c: Optional[float] = None
+    humidity: Optional[float] = None
+    fan_location: Optional[str] = None
+    extractor_top: Optional[bool] = False
+    extractor_bottom: Optional[bool] = False
+    fan: Optional[bool] = False
+    light_height_cm: Optional[float] = None
+    light_power_pct: Optional[int] = None
+    light_schedule: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class IndoorUpdateRequest(BaseModel):
     temp_c: Optional[float] = None
     humidity: Optional[float] = None
@@ -144,6 +160,19 @@ class PlantResponse(BaseModel):
 class WaterResponseData(BaseModel):
     plant: PlantResponse
     watering_history: WateringHistoryItem
+
+    class Config:
+        from_attributes = True
+
+
+class PlantCreateRequest(BaseModel):
+    name: str
+    species: Optional[str] = None
+    indoor_id: Optional[UUID] = None
+    planted_at: Optional[date] = None
+    watering_interval_days: int = 7
+    default_liters: float = 1.0
+    notes: Optional[str] = None
 
     class Config:
         from_attributes = True

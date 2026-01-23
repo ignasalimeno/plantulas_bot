@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useIndoorDetail, useUpdateIndoor, useToast } from "../hooks";
-import { WaterModal, ToastContainer, EmptyState } from "../components/Modals";
+import { WaterModal, ToastContainer, EmptyState, CreatePlantModal } from "../components/Modals";
 import { IndoorUpdateRequest } from "../api/types";
 
 export default function IndoorDetail() {
@@ -12,6 +12,7 @@ export default function IndoorDetail() {
   const { toasts, showToast, removeToast } = useToast();
 
   const [waterModalOpen, setWaterModalOpen] = useState(false);
+  const [createPlantModalOpen, setCreatePlantModalOpen] = useState(false);
   const [selectedPlant, setSelectedPlant] = useState<{ id: string; name: string } | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState<IndoorUpdateRequest>({});
@@ -48,6 +49,11 @@ export default function IndoorDetail() {
     refetch();
   };
 
+  const handleCreatePlantSuccess = () => {
+    showToast("Planta creada exitosamente", "success");
+    refetch();
+  };
+
   const handleFormChange = (field: keyof IndoorUpdateRequest, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -75,6 +81,21 @@ export default function IndoorDetail() {
 
   return (
     <div>
+      <WaterModal
+        isOpen={waterModalOpen}
+        plantId={selectedPlant?.id || ""}
+        plantName={selectedPlant?.name || ""}
+        onClose={() => setWaterModalOpen(false)}
+        onSuccess={handleWaterSuccess}
+      />
+      <CreatePlantModal
+        isOpen={createPlantModalOpen}
+        indoorId={id}
+        onClose={() => setCreatePlantModalOpen(false)}
+        onSuccess={handleCreatePlantSuccess}
+      />
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+
       {/* Header */}
       <div className="mb-8 flex justify-between items-center">
         <div>
@@ -86,7 +107,10 @@ export default function IndoorDetail() {
           </button>
           <h1 className="text-3xl font-bold text-gray-800">{data.indoor.name}</h1>
         </div>
-        <button className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 font-medium">
+        <button
+          onClick={() => setCreatePlantModalOpen(true)}
+          className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 font-medium"
+        >
           + Añadir Planta
         </button>
       </div>

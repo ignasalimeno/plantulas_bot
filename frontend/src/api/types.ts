@@ -91,6 +91,29 @@ export interface IndoorUpdateRequest {
   light_schedule?: string | null;
 }
 
+export interface IndoorCreateRequest {
+  name: string;
+  temp_c?: number | null;
+  humidity?: number | null;
+  fan_location?: string | null;
+  extractor_top?: boolean;
+  extractor_bottom?: boolean;
+  fan?: boolean;
+  light_height_cm?: number | null;
+  light_power_pct?: number | null;
+  light_schedule?: string | null;
+}
+
+export interface PlantCreateRequest {
+  name: string;
+  species?: string | null;
+  indoor_id?: string | null;
+  planted_at?: string | null; // YYYY-MM-DD
+  watering_interval_days?: number;
+  default_liters?: number;
+  notes?: string | null;
+}
+
 export interface ApiError {
   detail?: string | { msg: string; loc?: string[] }[];
   message?: string;

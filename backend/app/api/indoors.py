@@ -12,12 +12,70 @@ from app.schemas import (
     IndoorDetail,
     PlantInIndoor,
     IndoorHistoryItem,
+    IndoorCreateRequest,
     IndoorUpdateRequest
 )
 from app.api import get_current_user
 from app.services.indoor_service import get_indoor_with_plants, update_indoor
 
 router = APIRouter(prefix="/api/indoors", tags=["indoors"])
+
+
+@router.post("", response_model=IndoorDetail, status_code=201)
+async def create_indoor(
+    body: IndoorCreateRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """
+    Create a new indoor environment.
+    """
+    from decimal import Decimal
+    from datetime import datetime
+    from app.models import IndoorHistory
+    
+    # Create indoor
+    indoor = Indoor(
+        user_id=user.id,
+        name=body.name,
+        temp_c=Decimal(str(body.temp_c)) if body.temp_c is not None else None,
+        humidity=Decimal(str(body.humidity)) if body.humidity is not None else None,
+        fan_location=body.fan_location,
+        extractor_top=body.extractor_top,
+        extractor_bottom=body.extractor_bottom,
+        fan=body.fan,
+        light_height_cm=Decimal(str(body.light_height_cm)) if body.light_height_cm is not None else None,
+        light_power_pct=body.light_power_pct,
+        light_schedule=body.light_schedule
+    )
+    
+    db.add(indoor)
+    db.commit()
+    db.refresh(indoor)
+    
+    # Create history entry
+    history = IndoorHistory(
+        indoor_id=indoor.id,
+        event_ts=datetime.now(),
+        message="Indoor creado.",
+        payload=None
+    )
+    db.add(history)
+    db.commit()
+    
+    return IndoorDetail(
+        id=indoor.id,
+        name=indoor.name,
+        temp_c=float(indoor.temp_c) if indoor.temp_c else None,
+        humidity=float(indoor.humidity) if indoor.humidity else None,
+        fan_location=indoor.fan_location,
+        extractor_top=indoor.extractor_top,
+        extractor_bottom=indoor.extractor_bottom,
+        fan=indoor.fan,
+        light_height_cm=float(indoor.light_height_cm) if indoor.light_height_cm else None,
+        light_power_pct=indoor.light_power_pct,
+        light_schedule=indoor.light_schedule
+    )
 
 
 @router.get("", response_model=list[IndoorListItem])

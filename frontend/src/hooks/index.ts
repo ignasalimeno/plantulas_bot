@@ -7,6 +7,10 @@ import {
   PlantWaterRequest,
   PlantWaterResponse,
   IndoorUpdateRequest,
+  IndoorCreateRequest,
+  PlantCreateRequest,
+  IndoorDetail,
+  Plant,
 } from "../api/types";
 
 interface UseState<T> {
@@ -133,6 +137,37 @@ export function useWaterPlant() {
 }
 
 /**
+ * Hook para crear un indoor
+ */
+export function useCreateIndoor() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const createIndoor = useCallback(
+    async (request: IndoorCreateRequest): Promise<IndoorDetail | null> => {
+      try {
+        setLoading(true);
+        setError(null);
+        const result = await apiClient.post<IndoorDetail>(
+          `/api/indoors`,
+          request
+        );
+        return result;
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error("Failed to create indoor");
+        setError(error);
+        throw error;
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  return { createIndoor, loading, error };
+}
+
+/**
  * Hook para actualizar un indoor
  */
 export function useUpdateIndoor() {
@@ -161,6 +196,37 @@ export function useUpdateIndoor() {
   );
 
   return { updateIndoor, loading, error };
+}
+
+/**
+ * Hook para crear una planta
+ */
+export function useCreatePlant() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const createPlant = useCallback(
+    async (request: PlantCreateRequest): Promise<Plant | null> => {
+      try {
+        setLoading(true);
+        setError(null);
+        const result = await apiClient.post<Plant>(
+          `/api/plants`,
+          request
+        );
+        return result;
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error("Failed to create plant");
+        setError(error);
+        throw error;
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  return { createPlant, loading, error };
 }
 
 /**
