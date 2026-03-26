@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useWaterPlant, useCreateIndoor, useCreatePlant } from "../hooks";
-import { IndoorCreateRequest, PlantCreateRequest } from "../api/types";
+import { PlantCreateRequest } from "../api/types";
 
 interface WaterModalProps {
   isOpen: boolean;
