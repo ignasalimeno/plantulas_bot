@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import engine
 from app import models  # Import models to ensure they're registered
-from app.api import dashboard, indoors, plants, grow, fertilizers, chat
+from app.api import dashboard, indoors, plants, grow, fertilizers, chat, devices
 
 app = FastAPI(title="PlantulasBot API")
 
@@ -23,6 +23,7 @@ app.include_router(plants.router)
 app.include_router(grow.router)
 app.include_router(fertilizers.router)
 app.include_router(chat.router)
+app.include_router(devices.router)
 
 
 @app.get("/api/health")

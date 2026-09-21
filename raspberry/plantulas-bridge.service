@@ -1,0 +1,15 @@
+[Unit]
+Description=PlantulasBot bridge (Raspberry Pi)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/plantulas_bridge
+ExecStart=/home/pi/plantulas_bridge/venv/bin/python /home/pi/plantulas_bridge/bridge.py
+Restart=always
+RestartSec=10
+User=pi
+
+[Install]
+WantedBy=multi-user.target

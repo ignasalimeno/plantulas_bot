@@ -46,11 +46,18 @@ class Indoor(Base):
     extractor_bottom = Column(Boolean, default=False)
     fan = Column(Boolean, default=False)
     humidifier = Column(Boolean, default=False)
+    humidifier_mode = Column(Text, nullable=False, server_default="auto")  # auto | manual | off
     # Humidifier thresholds
     humidifier_on_below_humidity = Column(Numeric(5, 2))  # turn ON if humidity below
     humidifier_off_above_humidity = Column(Numeric(5, 2))  # turn OFF if humidity above
     humidifier_on_above_temp = Column(Numeric(5, 2))  # turn ON if temp above (cooling)
     humidifier_off_below_temp = Column(Numeric(5, 2))  # turn OFF if temp below
+    # Air conditioner (controlled via IR)
+    ac = Column(Boolean, default=False)
+    ac_mode = Column(Text, nullable=False, server_default="auto")  # auto | manual | off
+    ac_on_above_temp = Column(Numeric(5, 2))
+    ac_off_below_temp = Column(Numeric(5, 2))
+    ac_hvac_mode = Column(Text, server_default="cool")  # cool | heat | fan | dry
     
     # Lighting
     light_height_cm = Column(Numeric(6, 2))
@@ -73,6 +80,7 @@ class Indoor(Base):
     tasks = relationship("Task", back_populates="indoor", cascade="all, delete-orphan")
     fertilizer_plan = relationship("IndoorFertilizerPlan", back_populates="indoor", cascade="all, delete-orphan")
     fertilizer_applications = relationship("FertilizerApplication", back_populates="indoor", cascade="all, delete-orphan")
+    devices = relationship("Device", back_populates="indoor", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Indoor(id={self.id}, name={self.name})>"
@@ -306,6 +314,26 @@ class ChatMessage(Base):
 
     def __repr__(self):
         return f"<ChatMessage(id={self.id}, role={self.role})>"
+
+
+class Device(Base):
+    """A bridge device (e.g. Raspberry Pi) that reports telemetry and applies commands."""
+    __tablename__ = "devices"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    indoor_id = Column(UUID(as_uuid=True), ForeignKey("indoors.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(Text, nullable=False)
+    token_hash = Column(Text, nullable=False, index=True)
+    ha_entities = Column(JSONB)  # {temp, humidity, humidifier, ac}
+    reported_state = Column(JSONB)  # {humidifier, ac, at}
+    last_seen = Column(DateTime(timezone=True))
+    active = Column(Boolean, nullable=False, default=True, server_default="true")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    indoor = relationship("Indoor", back_populates="devices")
+
+    def __repr__(self):
+        return f"<Device(id={self.id}, name={self.name})>"
 
 
 # Create composite indexes

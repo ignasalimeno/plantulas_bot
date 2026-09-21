@@ -76,10 +76,16 @@ class IndoorDetail(BaseModel):
     extractor_bottom: bool
     fan: bool
     humidifier: bool
+    humidifier_mode: str
     humidifier_on_below_humidity: Optional[float]
     humidifier_off_above_humidity: Optional[float]
     humidifier_on_above_temp: Optional[float]
     humidifier_off_below_temp: Optional[float]
+    ac: bool
+    ac_mode: str
+    ac_on_above_temp: Optional[float]
+    ac_off_below_temp: Optional[float]
+    ac_hvac_mode: Optional[str]
     light_height_cm: Optional[float]
     light_power_pct: Optional[int]
     light_schedule: Optional[str]
@@ -108,10 +114,16 @@ class IndoorCreateRequest(BaseModel):
     extractor_bottom: Optional[bool] = False
     fan: Optional[bool] = False
     humidifier: Optional[bool] = False
+    humidifier_mode: Optional[str] = None
     humidifier_on_below_humidity: Optional[float] = None
     humidifier_off_above_humidity: Optional[float] = None
     humidifier_on_above_temp: Optional[float] = None
     humidifier_off_below_temp: Optional[float] = None
+    ac: Optional[bool] = False
+    ac_mode: Optional[str] = None
+    ac_on_above_temp: Optional[float] = None
+    ac_off_below_temp: Optional[float] = None
+    ac_hvac_mode: Optional[str] = None
     light_height_cm: Optional[float] = None
     light_power_pct: Optional[int] = None
     light_schedule: Optional[str] = None
@@ -130,10 +142,16 @@ class IndoorUpdateRequest(BaseModel):
     extractor_bottom: Optional[bool] = None
     fan: Optional[bool] = None
     humidifier: Optional[bool] = None
+    humidifier_mode: Optional[str] = None
     humidifier_on_below_humidity: Optional[float] = None
     humidifier_off_above_humidity: Optional[float] = None
     humidifier_on_above_temp: Optional[float] = None
     humidifier_off_below_temp: Optional[float] = None
+    ac: Optional[bool] = None
+    ac_mode: Optional[str] = None
+    ac_on_above_temp: Optional[float] = None
+    ac_off_below_temp: Optional[float] = None
+    ac_hvac_mode: Optional[str] = None
     light_height_cm: Optional[float] = None
     light_power_pct: Optional[int] = None
     light_schedule: Optional[str] = None
@@ -503,3 +521,65 @@ class ChatMessageItem(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     pending_action: Optional[dict] = None
+
+
+# ============ DEVICES (Raspberry Pi / bridges) ============
+
+class DeviceHaEntities(BaseModel):
+    temp: Optional[str] = None
+    humidity: Optional[str] = None
+    humidifier: Optional[str] = None
+    ac: Optional[str] = None
+
+
+class DeviceCreate(BaseModel):
+    name: str
+    ha_entities: Optional[DeviceHaEntities] = None
+
+
+class DeviceUpdate(BaseModel):
+    name: Optional[str] = None
+    ha_entities: Optional[DeviceHaEntities] = None
+    active: Optional[bool] = None
+
+
+class DeviceItem(BaseModel):
+    id: UUID
+    indoor_id: UUID
+    name: str
+    ha_entities: Optional[dict] = None
+    reported_state: Optional[dict] = None
+    last_seen: Optional[datetime] = None
+    active: bool
+
+    class Config:
+        from_attributes = True
+
+
+class DeviceCreateResponse(BaseModel):
+    device: DeviceItem
+    token: str
+
+
+class TelemetryRequest(BaseModel):
+    temp_c: Optional[float] = None
+    humidity: Optional[float] = None
+    ppfd: Optional[int] = None
+    ec: Optional[float] = None
+    ph: Optional[float] = None
+    runoff_ec: Optional[float] = None
+    note: Optional[str] = None
+
+
+class DeviceCommands(BaseModel):
+    indoor_id: UUID
+    humidifier: bool
+    ac: bool
+    ac_hvac_mode: Optional[str] = None
+    humidifier_mode: str
+    ac_mode: str
+
+
+class DeviceStateRequest(BaseModel):
+    humidifier: Optional[bool] = None
+    ac: Optional[bool] = None

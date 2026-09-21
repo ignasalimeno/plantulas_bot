@@ -31,6 +31,9 @@ import {
   IndoorWateringUpdate,
   ChatMessage,
   ChatResponse,
+  Device,
+  DeviceCreate,
+  DeviceCreateResponse,
   IndoorDetail,
   Plant,
 } from "../api/types";
@@ -1129,6 +1132,86 @@ export function useDeleteIndoorHistoryEvent() {
   );
 
   return { deleteHistoryEvent, loading, error };
+}
+
+/**
+ * Hook para los dispositivos (bridges) de un indoor
+ */
+export function useDevices(indoorId: string): UseState<Device[]> {
+  const [data, setData] = useState<Device[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchData = useCallback(async () => {
+    if (!indoorId) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const result = await apiClient.get<Device[]>(`/api/indoors/${indoorId}/devices`);
+      setData(result);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error("Failed to fetch devices"));
+    } finally {
+      setLoading(false);
+    }
+  }, [indoorId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  return { data, loading, error, refetch: fetchData };
+}
+
+export function useCreateDevice() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const createDevice = useCallback(
+    async (indoorId: string, data: DeviceCreate): Promise<DeviceCreateResponse | null> => {
+      try {
+        setLoading(true);
+        setError(null);
+        return await apiClient.post<DeviceCreateResponse>(`/api/indoors/${indoorId}/devices`, data);
+      } catch (err) {
+        const e = err instanceof Error ? err : new Error("Failed to create device");
+        setError(e);
+        throw e;
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  return { createDevice, loading, error };
+}
+
+export function useUpdateDevice() {
+  const updateDevice = useCallback(
+    async (deviceId: string, data: Partial<DeviceCreate> & { active?: boolean }): Promise<Device | null> => {
+      return await apiClient.patch<Device>(`/api/devices/${deviceId}`, data);
+    },
+    []
+  );
+  return { updateDevice };
+}
+
+export function useDeleteDevice() {
+  const deleteDevice = useCallback(async (deviceId: string): Promise<void> => {
+    await apiClient.delete(`/api/devices/${deviceId}`);
+  }, []);
+  return { deleteDevice };
+}
+
+export function useRotateDeviceToken() {
+  const rotateToken = useCallback(
+    async (deviceId: string): Promise<DeviceCreateResponse | null> => {
+      return await apiClient.post<DeviceCreateResponse>(`/api/devices/${deviceId}/rotate-token`);
+    },
+    []
+  );
+  return { rotateToken };
 }
 
 /**

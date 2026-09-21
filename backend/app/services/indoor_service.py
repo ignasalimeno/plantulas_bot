@@ -44,6 +44,12 @@ def update_indoor(
     humidifier_off_above_humidity: float | None = None,
     humidifier_on_above_temp: float | None = None,
     humidifier_off_below_temp: float | None = None,
+    humidifier_mode: str | None = None,
+    ac: bool | None = None,
+    ac_mode: str | None = None,
+    ac_on_above_temp: float | None = None,
+    ac_off_below_temp: float | None = None,
+    ac_hvac_mode: str | None = None,
     light_height_cm: float | None = None,
     light_power_pct: int | None = None,
     light_schedule: str | None = None,
@@ -79,6 +85,18 @@ def update_indoor(
         indoor.humidifier_on_above_temp = humidifier_on_above_temp
     if humidifier_off_below_temp is not None:
         indoor.humidifier_off_below_temp = humidifier_off_below_temp
+    if humidifier_mode is not None:
+        indoor.humidifier_mode = humidifier_mode
+    if ac is not None:
+        indoor.ac = ac
+    if ac_mode is not None:
+        indoor.ac_mode = ac_mode
+    if ac_on_above_temp is not None:
+        indoor.ac_on_above_temp = ac_on_above_temp
+    if ac_off_below_temp is not None:
+        indoor.ac_off_below_temp = ac_off_below_temp
+    if ac_hvac_mode is not None:
+        indoor.ac_hvac_mode = ac_hvac_mode
     if light_height_cm is not None:
         indoor.light_height_cm = light_height_cm
     if light_power_pct is not None:

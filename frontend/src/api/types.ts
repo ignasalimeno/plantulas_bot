@@ -57,10 +57,16 @@ export interface IndoorDetail {
   extractor_bottom: boolean;
   fan: boolean;
   humidifier: boolean;
+  humidifier_mode: string;
   humidifier_on_below_humidity: number | null;
   humidifier_off_above_humidity: number | null;
   humidifier_on_above_temp: number | null;
   humidifier_off_below_temp: number | null;
+  ac: boolean;
+  ac_mode: string;
+  ac_on_above_temp: number | null;
+  ac_off_below_temp: number | null;
+  ac_hvac_mode: string | null;
   light_height_cm: number | null;
   light_power_pct: number | null;
   light_schedule: string | null;
@@ -103,10 +109,16 @@ export interface IndoorUpdateRequest {
   extractor_bottom?: boolean;
   fan?: boolean;
   humidifier?: boolean;
+  humidifier_mode?: string;
   humidifier_on_below_humidity?: number | null;
   humidifier_off_above_humidity?: number | null;
   humidifier_on_above_temp?: number | null;
   humidifier_off_below_temp?: number | null;
+  ac?: boolean;
+  ac_mode?: string;
+  ac_on_above_temp?: number | null;
+  ac_off_below_temp?: number | null;
+  ac_hvac_mode?: string | null;
   light_height_cm?: number | null;
   light_power_pct?: number;
   light_schedule?: string | null;
@@ -266,6 +278,33 @@ export interface ChatMessage {
 export interface ChatResponse {
   reply: string;
   pending_action: PendingAction | null;
+}
+
+export interface DeviceHaEntities {
+  temp?: string | null;
+  humidity?: string | null;
+  humidifier?: string | null;
+  ac?: string | null;
+}
+
+export interface Device {
+  id: string;
+  indoor_id: string;
+  name: string;
+  ha_entities: DeviceHaEntities | null;
+  reported_state: Record<string, any> | null;
+  last_seen: string | null;
+  active: boolean;
+}
+
+export interface DeviceCreate {
+  name: string;
+  ha_entities?: DeviceHaEntities;
+}
+
+export interface DeviceCreateResponse {
+  device: Device;
+  token: string;
 }
 
 export interface Fertilizer {

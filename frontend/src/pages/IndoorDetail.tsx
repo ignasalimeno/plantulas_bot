@@ -25,6 +25,7 @@ import {
 import { RiegoPanel } from "../components/Riego";
 import { FertilizersPanel } from "../components/Fertilizers";
 import { AmbientePanel } from "../components/Ambiente";
+import { DevicesPanel } from "../components/Devices";
 import { CollapsiblePanel } from "../components/Collapsible";
 import { PlantDetail, Plant } from "../api/types";
 
@@ -342,6 +343,11 @@ export default function IndoorDetail() {
       {/* Objetivos por etapa */}
       <div className="mb-8">
         <StageTargetsPanel indoorId={data.indoor.id} currentStage={data.indoor.stage} />
+      </div>
+
+      {/* Dispositivos (Raspberry Pi) */}
+      <div className="mb-8">
+        <DevicesPanel indoorId={data.indoor.id} />
       </div>
 
       {/* Water Modal */}

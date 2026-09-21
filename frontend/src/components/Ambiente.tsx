@@ -173,9 +173,36 @@ export function AmbientePanel({
     }
   };
 
+  const handleSetMode = async (field: "humidifier_mode" | "ac_mode", value: string) => {
+    try {
+      await updateIndoor(indoor.id, { [field]: value });
+      onUpdated();
+    } catch {
+      showToast("Error al cambiar el modo", "error");
+    }
+  };
+
+  const handleToggleAc = async () => {
+    try {
+      await updateIndoor(indoor.id, { ac: !indoor.ac });
+      onUpdated();
+    } catch {
+      showToast("Error al actualizar el aire", "error");
+    }
+  };
+
   const tempValue = latest?.temp_c ?? indoor.temp_c;
   const humidityValue = latest?.humidity ?? indoor.humidity;
   const recommendation = humidifierRecommendation(indoor, tempValue, humidityValue);
+
+  const acRecommendation: "on" | "off" | null =
+    tempValue == null
+      ? null
+      : indoor.ac_on_above_temp != null && tempValue > indoor.ac_on_above_temp
+      ? "on"
+      : indoor.ac_off_below_temp != null && tempValue < indoor.ac_off_below_temp
+      ? "off"
+      : null;
 
   const indicators = [
     {
@@ -437,6 +464,55 @@ export function AmbientePanel({
             </div>
 
             <div>
+              <p className="field-label">Aire acondicionado — umbrales</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Encender si temp &gt;</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={formData.ac_on_above_temp ?? indoor.ac_on_above_temp ?? ""}
+                    onChange={(e) =>
+                      handleChange(
+                        "ac_on_above_temp",
+                        e.target.value ? parseFloat(e.target.value) : null
+                      )
+                    }
+                    className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Apagar si temp &lt;</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={formData.ac_off_below_temp ?? indoor.ac_off_below_temp ?? ""}
+                    onChange={(e) =>
+                      handleChange(
+                        "ac_off_below_temp",
+                        e.target.value ? parseFloat(e.target.value) : null
+                      )
+                    }
+                    className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Modo HVAC</label>
+                  <select
+                    value={formData.ac_hvac_mode ?? indoor.ac_hvac_mode ?? "cool"}
+                    onChange={(e) => handleChange("ac_hvac_mode", e.target.value)}
+                    className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="cool">Frío (cool)</option>
+                    <option value="heat">Calor (heat)</option>
+                    <option value="fan">Ventilador (fan)</option>
+                    <option value="dry">Deshumidificar (dry)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div>
               <p className="field-label">Luz</p>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
@@ -498,38 +574,93 @@ export function AmbientePanel({
                 </p>
               </div>
 
-              <div
-                className={`border rounded-sm p-3 ${
-                  indoor.humidifier ? "border-blue-500 bg-blue-50" : "border-gray-200 bg-gray-50"
-                }`}
-              >
-                <p className="text-[10px] uppercase tracking-widest text-gray-500">
-                  Humidificador
-                </p>
-                <button
-                  onClick={handleToggleHumidifier}
-                  className={`mt-2 px-3 py-1 rounded-sm text-xs uppercase tracking-wider ${
-                    indoor.humidifier
-                      ? "bg-blue-500 text-white hover:bg-blue-600"
-                      : "border border-gray-300 text-gray-600 hover:bg-gray-100"
-                  }`}
-                >
-                  {indoor.humidifier ? "● ON" : "○ OFF"}
-                </button>
-                {recommendation ? (
-                  <p
-                    className={`text-[10px] uppercase tracking-widest mt-1 ${
-                      (recommendation === "on") !== indoor.humidifier
-                        ? "text-yellow-800"
-                        : "text-gray-500"
+              <div className="border border-gray-200 rounded-sm p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] uppercase tracking-widest text-gray-500">
+                    Humidificador
+                  </p>
+                  <select
+                    value={indoor.humidifier_mode}
+                    onChange={(e) => handleSetMode("humidifier_mode", e.target.value)}
+                    className="text-[10px] uppercase tracking-wider bg-gray-50 border border-gray-300 rounded-sm px-1 py-0.5"
+                  >
+                    <option value="auto">auto</option>
+                    <option value="manual">manual</option>
+                    <option value="off">off</option>
+                  </select>
+                </div>
+                {indoor.humidifier_mode === "manual" ? (
+                  <button
+                    onClick={handleToggleHumidifier}
+                    className={`mt-2 px-3 py-1 rounded-sm text-xs uppercase tracking-wider ${
+                      indoor.humidifier
+                        ? "bg-blue-500 text-white hover:bg-blue-600"
+                        : "border border-gray-300 text-gray-600 hover:bg-gray-100"
                     }`}
                   >
-                    recomendado: {recommendation === "on" ? "ON" : "OFF"}
-                  </p>
+                    {indoor.humidifier ? "● ON" : "○ OFF"}
+                  </button>
+                ) : indoor.humidifier_mode === "auto" ? (
+                  <>
+                    <p
+                      className={`text-2xl font-bold leading-none mt-2 ${
+                        recommendation === "on" ? "text-blue-500" : "text-gray-500"
+                      }`}
+                    >
+                      {recommendation === "on" ? "ON" : recommendation === "off" ? "OFF" : "—"}
+                    </p>
+                    <p className="text-[10px] uppercase tracking-widest text-gray-500 mt-1">
+                      según umbrales
+                    </p>
+                  </>
                 ) : (
-                  <p className="text-[10px] uppercase tracking-widest text-gray-500 mt-1">
-                    sin umbrales
-                  </p>
+                  <p className="text-2xl font-bold leading-none mt-2 text-gray-400">OFF</p>
+                )}
+              </div>
+
+              <div className="border border-gray-200 rounded-sm p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] uppercase tracking-widest text-gray-500">Aire</p>
+                  <select
+                    value={indoor.ac_mode}
+                    onChange={(e) => handleSetMode("ac_mode", e.target.value)}
+                    className="text-[10px] uppercase tracking-wider bg-gray-50 border border-gray-300 rounded-sm px-1 py-0.5"
+                  >
+                    <option value="auto">auto</option>
+                    <option value="manual">manual</option>
+                    <option value="off">off</option>
+                  </select>
+                </div>
+                {indoor.ac_mode === "manual" ? (
+                  <button
+                    onClick={handleToggleAc}
+                    className={`mt-2 px-3 py-1 rounded-sm text-xs uppercase tracking-wider ${
+                      indoor.ac
+                        ? "bg-blue-500 text-white hover:bg-blue-600"
+                        : "border border-gray-300 text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    {indoor.ac ? "● ON" : "○ OFF"}
+                  </button>
+                ) : indoor.ac_mode === "auto" ? (
+                  <>
+                    <p
+                      className={`text-2xl font-bold leading-none mt-2 ${
+                        acRecommendation === "on" ? "text-blue-500" : "text-gray-500"
+                      }`}
+                    >
+                      {acRecommendation === "on"
+                        ? "ON"
+                        : acRecommendation === "off"
+                        ? "OFF"
+                        : "—"}
+                    </p>
+                    <p className="text-[10px] uppercase tracking-widest text-gray-500 mt-1">
+                      según temperatura
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-2xl font-bold leading-none mt-2 text-gray-400">OFF</p>
                 )}
               </div>
             </div>
