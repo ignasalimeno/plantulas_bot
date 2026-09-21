@@ -17,6 +17,9 @@ def register_watering(
     event_date: date | None = None,
     note: str | None = None,
     ferts: list | None = None,
+    ec: float | None = None,
+    ph: float | None = None,
+    runoff_ec: float | None = None,
 ) -> tuple[Plant, WateringHistory]:
     """
     Register a watering event and update plant next_water_at.
@@ -47,7 +50,10 @@ def register_watering(
         event_ts=event_ts,
         liters=Decimal(str(liters)),
         note=note,
-        ferts=ferts_dict
+        ferts=ferts_dict,
+        ec=Decimal(str(ec)) if ec is not None else None,
+        ph=Decimal(str(ph)) if ph is not None else None,
+        runoff_ec=Decimal(str(runoff_ec)) if runoff_ec is not None else None,
     )
     db.add(watering_history)
     
@@ -63,3 +69,32 @@ def register_watering(
     db.refresh(watering_history)
     
     return plant, watering_history
+
+
+def get_plant(db: Session, user_id: UUID, plant_id: UUID) -> Plant | None:
+    """Get a plant belonging to the user, or None."""
+    return db.query(Plant).filter(
+        Plant.id == plant_id,
+        Plant.user_id == user_id
+    ).first()
+
+
+def update_plant(db: Session, plant: Plant, updates: dict) -> Plant:
+    """
+    Update plant fields. Recomputes next_water_at when the watering interval
+    changes and the plant has been watered at least once.
+    """
+    for field, value in updates.items():
+        if field == "default_liters" and value is not None:
+            value = Decimal(str(value))
+        setattr(plant, field, value)
+    
+    if "watering_interval_days" in updates and plant.last_watered_at:
+        plant.next_water_at = compute_next_water_at(
+            plant.last_watered_at,
+            plant.watering_interval_days
+        )
+    
+    db.commit()
+    db.refresh(plant)
+    return plant

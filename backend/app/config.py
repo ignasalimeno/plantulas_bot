@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     # Accept both JSON list or CSV string from env to avoid parsing issues on hosts
     cors_origins: Union[List[str], str] = ["http://localhost:5173"]
     db_echo: bool = False
+    openai_api_key: str = ""
+    ai_model: str = "gpt-4o-mini"
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
 

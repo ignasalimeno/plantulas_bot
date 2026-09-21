@@ -1,0 +1,38 @@
+services:
+  # Backend: FastAPI + migrations
+  - type: web
+    name: plantulas-bot-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: ./render_start.sh
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.6
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: AI_MODEL
+        value: gpt-4o-mini
+      - key: CORS_ORIGINS
+        sync: false
+      - key: RUN_DB_SEED
+        value: "false"
+
+  # Frontend: React + Vite (static site)
+  - type: web
+    name: plantulas-bot-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

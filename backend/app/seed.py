@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal, engine
 from app.models import User, Indoor, IndoorHistory, Plant, WateringHistory
 from app.services import compute_next_water_at
+from app.services.indoor_service import seed_indoor_defaults
 
 
 def create_user(db: Session, telegram_user_id: int) -> User:
@@ -44,6 +45,7 @@ def create_indoors(db: Session, user: User) -> list[Indoor]:
             "light_height_cm": Decimal("50.0"),
             "light_power_pct": 80,
             "light_schedule": "18/6",
+            "stage": "veg_early",
         },
         {
             "name": "Jardín de Hierbas",
@@ -56,6 +58,7 @@ def create_indoors(db: Session, user: User) -> list[Indoor]:
             "light_height_cm": Decimal("40.0"),
             "light_power_pct": 60,
             "light_schedule": "16/8",
+            "stage": "veg_late",
         }
     ]
     
@@ -67,6 +70,7 @@ def create_indoors(db: Session, user: User) -> list[Indoor]:
         
         if existing:
             print(f"✓ Indoor '{data['name']}' already exists")
+            seed_indoor_defaults(db, existing)
             indoors.append(existing)
         else:
             indoor = Indoor(user_id=user.id, **data)
@@ -83,6 +87,10 @@ def create_indoors(db: Session, user: User) -> list[Indoor]:
                 payload=None
             )
             db.add(history)
+            db.commit()
+            
+            # Seed default stage targets and checklist
+            seed_indoor_defaults(db, indoor)
             indoors.append(indoor)
     
     db.commit()

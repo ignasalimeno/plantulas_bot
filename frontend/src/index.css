@@ -2,16 +2,127 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  background-color: #15221b;
+  background-image: radial-gradient(
+    circle at 15% 0%,
+    rgba(124, 227, 139, 0.07),
+    transparent 45%
+  );
+  background-attachment: fixed;
+  color: #dbe6d6;
+  font-family: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Cards / panels get a terminal-style hairline border */
+@layer base {
+  .shadow,
+  .shadow-md,
+  .shadow-lg {
+    border: 1px solid #2e4a38;
+  }
+}
+
+/* Terminal-ish typography for UI chrome */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+th,
+label,
+button,
+input,
+select,
+textarea {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: 0.02em;
+}
+
+/* Terminal prompt marker on page titles */
+h1::before {
+  content: '> ';
+  color: #7ce38b;
+}
+
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+}
+
+::selection {
+  background: #7ce38b;
+  color: #0a120d;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #15221b;
+}
+::-webkit-scrollbar-thumb {
+  background: #2e4a38;
+  border: 2px solid #15221b;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3e6049;
+}
+* {
+  scrollbar-color: #2e4a38 #15221b;
+}
+
+@layer components {
+  .panel {
+    @apply bg-white border border-gray-200 rounded-sm;
+  }
+
+  .panel-title {
+    @apply text-xs uppercase tracking-widest text-gray-500;
+  }
+
+  .field-label {
+    @apply block text-xs uppercase tracking-wider text-gray-500 mb-2;
+  }
+
+  /* Section heading with a green console marker */
+  .section-title {
+    @apply border-l-2 border-blue-500 pl-3;
+  }
+
+  .btn-primary {
+    @apply px-4 py-2 rounded-sm text-xs font-medium uppercase tracking-wider transition-colors bg-blue-500 text-white hover:bg-blue-600;
+  }
+
+  .btn-ghost {
+    @apply px-4 py-2 rounded-sm text-xs font-medium uppercase tracking-wider transition-colors border border-gray-300 text-gray-700 hover:bg-gray-100;
+  }
+
+  .btn-danger {
+    @apply px-4 py-2 rounded-sm text-xs font-medium uppercase tracking-wider transition-colors border border-red-400 text-red-700 hover:bg-red-100;
+  }
+
+  .led {
+    @apply inline-block w-2 h-2 rounded-full align-middle;
+  }
 }

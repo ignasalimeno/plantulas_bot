@@ -57,6 +57,9 @@ class PlantInIndoor(BaseModel):
     next_water_at: Optional[date]
     watering_interval_days: int
     days_since_planted: Optional[int]
+    planted_at: Optional[date] = None
+    default_liters: float = 1.0
+    notes: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -71,9 +74,16 @@ class IndoorDetail(BaseModel):
     extractor_top: bool
     extractor_bottom: bool
     fan: bool
+    humidifier: bool
+    humidifier_on_below_humidity: Optional[float]
+    humidifier_off_above_humidity: Optional[float]
+    humidifier_on_above_temp: Optional[float]
+    humidifier_off_below_temp: Optional[float]
     light_height_cm: Optional[float]
     light_power_pct: Optional[int]
     light_schedule: Optional[str]
+    stage: str
+    stage_started_at: Optional[date]
 
     class Config:
         from_attributes = True
@@ -96,9 +106,16 @@ class IndoorCreateRequest(BaseModel):
     extractor_top: Optional[bool] = False
     extractor_bottom: Optional[bool] = False
     fan: Optional[bool] = False
+    humidifier: Optional[bool] = False
+    humidifier_on_below_humidity: Optional[float] = None
+    humidifier_off_above_humidity: Optional[float] = None
+    humidifier_on_above_temp: Optional[float] = None
+    humidifier_off_below_temp: Optional[float] = None
     light_height_cm: Optional[float] = None
     light_power_pct: Optional[int] = None
     light_schedule: Optional[str] = None
+    stage: Optional[str] = None
+    stage_started_at: Optional[date] = None
 
     class Config:
         from_attributes = True
@@ -111,9 +128,16 @@ class IndoorUpdateRequest(BaseModel):
     extractor_top: Optional[bool] = None
     extractor_bottom: Optional[bool] = None
     fan: Optional[bool] = None
+    humidifier: Optional[bool] = None
+    humidifier_on_below_humidity: Optional[float] = None
+    humidifier_off_above_humidity: Optional[float] = None
+    humidifier_on_above_temp: Optional[float] = None
+    humidifier_off_below_temp: Optional[float] = None
     light_height_cm: Optional[float] = None
     light_power_pct: Optional[int] = None
     light_schedule: Optional[str] = None
+    stage: Optional[str] = None
+    stage_started_at: Optional[date] = None
 
     class Config:
         from_attributes = True
@@ -132,6 +156,9 @@ class WateringHistoryItem(BaseModel):
     liters: float
     note: Optional[str]
     ferts: Optional[dict]
+    ec: Optional[float] = None
+    ph: Optional[float] = None
+    runoff_ec: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -142,6 +169,9 @@ class PlantWaterRequest(BaseModel):
     date: Optional[date] = None
     note: Optional[str] = None
     ferts: Optional[List[FertilizerItem]] = None
+    ec: Optional[float] = None
+    ph: Optional[float] = None
+    runoff_ec: Optional[float] = None
 
 
 class PlantResponse(BaseModel):
@@ -176,3 +206,268 @@ class PlantCreateRequest(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PlantUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    species: Optional[str] = None
+    indoor_id: Optional[UUID] = None
+    planted_at: Optional[date] = None
+    watering_interval_days: Optional[int] = None
+    default_liters: Optional[float] = None
+    notes: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PlantDetailResponse(BaseModel):
+    id: UUID
+    name: str
+    species: Optional[str]
+    indoor_id: Optional[UUID]
+    indoor_name: Optional[str]
+    planted_at: Optional[date]
+    notes: Optional[str]
+    watering_interval_days: int
+    default_liters: float
+    last_watered_at: Optional[date]
+    next_water_at: Optional[date]
+
+    class Config:
+        from_attributes = True
+
+
+class PlantHistoryResponse(BaseModel):
+    plant: PlantDetailResponse
+    history: List[WateringHistoryItem]
+
+    class Config:
+        from_attributes = True
+
+
+# ============ GROW STAGES / TARGETS ============
+
+class StageInfo(BaseModel):
+    key: str
+    label: str
+
+
+class StageTargetItem(BaseModel):
+    stage: str
+    ec_min: Optional[float] = None
+    ec_max: Optional[float] = None
+    ph_min: Optional[float] = None
+    ph_max: Optional[float] = None
+    temp_min: Optional[float] = None
+    temp_max: Optional[float] = None
+    humidity_min: Optional[float] = None
+    humidity_max: Optional[float] = None
+    light_height_min: Optional[float] = None
+    light_height_max: Optional[float] = None
+    ppfd_min: Optional[int] = None
+    ppfd_max: Optional[int] = None
+    light_schedule: Optional[str] = None
+    notes: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class StageTargetsUpdate(BaseModel):
+    targets: List[StageTargetItem]
+
+
+# ============ MEASUREMENTS ============
+
+class MeasurementCreate(BaseModel):
+    event_ts: Optional[datetime] = None
+    temp_c: Optional[float] = None
+    humidity: Optional[float] = None
+    ph: Optional[float] = None
+    ec: Optional[float] = None
+    runoff_ec: Optional[float] = None
+    ppfd: Optional[int] = None
+    note: Optional[str] = None
+
+
+class MeasurementItem(BaseModel):
+    id: UUID
+    event_ts: datetime
+    temp_c: Optional[float]
+    humidity: Optional[float]
+    ph: Optional[float]
+    ec: Optional[float]
+    runoff_ec: Optional[float]
+    ppfd: Optional[int]
+    note: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+# ============ TASKS / CHECKLIST ============
+
+class TaskCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    frequency: Optional[str] = None
+    stage: Optional[str] = None
+    due_at: Optional[date] = None
+
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    frequency: Optional[str] = None
+    stage: Optional[str] = None
+    is_done: Optional[bool] = None
+    due_at: Optional[date] = None
+
+
+class TaskItem(BaseModel):
+    id: UUID
+    title: str
+    description: Optional[str]
+    frequency: Optional[str]
+    stage: Optional[str]
+    is_done: bool
+    due_at: Optional[date]
+    completed_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+
+# ============ FERTILIZERS ============
+
+class FertilizerCreate(BaseModel):
+    name: str
+    kind: Optional[str] = None
+    unit: Optional[str] = None
+    default_amount: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class FertilizerUpdate(BaseModel):
+    name: Optional[str] = None
+    kind: Optional[str] = None
+    unit: Optional[str] = None
+    default_amount: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class FertilizerItem(BaseModel):
+    id: UUID
+    name: str
+    kind: Optional[str]
+    unit: Optional[str]
+    default_amount: Optional[float]
+    notes: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+class PlanItemInput(BaseModel):
+    fertilizer_id: UUID
+    frequency: Optional[str] = None
+    stage: Optional[str] = None
+    active: bool = True
+
+
+class PlanUpdate(BaseModel):
+    items: List[PlanItemInput]
+
+
+class PlanItemResponse(BaseModel):
+    id: UUID
+    fertilizer_id: UUID
+    fertilizer_name: str
+    kind: Optional[str]
+    unit: Optional[str]
+    default_amount: Optional[float]
+    frequency: Optional[str]
+    stage: Optional[str]
+    active: bool
+    last_applied_at: Optional[datetime] = None
+
+
+class ApplicationCreate(BaseModel):
+    fertilizer_id: UUID
+    amount: Optional[float] = None
+    note: Optional[str] = None
+    applied_at: Optional[datetime] = None
+
+
+class ApplicationItem(BaseModel):
+    id: UUID
+    fertilizer_id: UUID
+    fertilizer_name: str
+    applied_at: datetime
+    amount: Optional[float]
+    note: Optional[str]
+
+
+# ============ INDOOR WATERING ============
+
+class IndoorWaterFertilizer(BaseModel):
+    fertilizer_id: UUID
+    amount: Optional[float] = None
+
+
+class IndoorWaterRequest(BaseModel):
+    liters: float
+    date: Optional[date] = None
+    note: Optional[str] = None
+    ec: Optional[float] = None
+    ph: Optional[float] = None
+    runoff_ec: Optional[float] = None
+    plant_ids: Optional[List[UUID]] = None
+    fertilizers: Optional[List[IndoorWaterFertilizer]] = None
+
+
+class IndoorWaterResponse(BaseModel):
+    plants_watered: int
+    liters: float
+    plant_names: List[str]
+    applications_created: int
+
+
+class IndoorWateringItem(BaseModel):
+    id: UUID
+    plant_id: UUID
+    plant_name: str
+    event_ts: datetime
+    liters: float
+    note: Optional[str]
+    ferts: Optional[dict]
+    ec: Optional[float] = None
+    ph: Optional[float] = None
+    runoff_ec: Optional[float] = None
+
+
+# ============ CHAT ============
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+class ChatConfirmRequest(BaseModel):
+    approve: bool
+
+
+class ChatMessageItem(BaseModel):
+    id: UUID
+    role: str
+    content: str
+    pending_action: Optional[dict] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ChatResponse(BaseModel):
+    reply: str
+    pending_action: Optional[dict] = None
