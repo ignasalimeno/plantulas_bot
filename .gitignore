@@ -9,6 +9,9 @@ notas.nd
 # SFDX (unrelated tooling)
 .sfdx/
 
+# Netlify CLI state
+.netlify/
+
 # Python
 __pycache__/
 *.py[cod]

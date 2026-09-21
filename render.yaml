@@ -1,5 +1,5 @@
 services:
-  # Backend: FastAPI + migrations
+  # Backend: FastAPI + migraciones (el frontend se deploya en Netlify)
   - type: web
     name: plantulas-bot-api
     runtime: python
@@ -21,18 +21,3 @@ services:
         sync: false
       - key: RUN_DB_SEED
         value: "false"
-
-  # Frontend: React + Vite (static site)
-  - type: web
-    name: plantulas-bot-web
-    runtime: static
-    rootDir: frontend
-    buildCommand: npm install && npm run build
-    staticPublishPath: dist
-    envVars:
-      - key: VITE_API_BASE_URL
-        sync: false
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
