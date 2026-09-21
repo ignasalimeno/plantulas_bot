@@ -1,6 +1,12 @@
 import { useState, ReactNode } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useIndoorDetail, useDeletePlant, useToast } from "../hooks";
+import {
+  useIndoorDetail,
+  useDeletePlant,
+  useCreateIndoorHistoryEvent,
+  useDeleteIndoorHistoryEvent,
+  useToast,
+} from "../hooks";
 import {
   WaterModal,
   ToastContainer,
@@ -36,6 +42,8 @@ export default function IndoorDetail() {
   const navigate = useNavigate();
   const { data, loading, error, refetch } = useIndoorDetail(id || "");
   const { deletePlant } = useDeletePlant();
+  const { createHistoryEvent, loading: creatingEvent } = useCreateIndoorHistoryEvent();
+  const { deleteHistoryEvent } = useDeleteIndoorHistoryEvent();
   const { toasts, showToast, removeToast } = useToast();
 
   const [waterModalOpen, setWaterModalOpen] = useState(false);
@@ -44,6 +52,7 @@ export default function IndoorDetail() {
   const [editPlant, setEditPlant] = useState<PlantDetail | null>(null);
   const [historyPlant, setHistoryPlant] = useState<PlantDetail | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PlantDetail | null>(null);
+  const [newEvent, setNewEvent] = useState("");
 
   if (!id) {
     return <div>ID de indoor no encontrado</div>;
@@ -109,6 +118,29 @@ export default function IndoorDetail() {
       refetch();
     } catch {
       showToast("Error al eliminar la planta", "error");
+    }
+  };
+
+  const handleAddEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEvent.trim()) return;
+    try {
+      await createHistoryEvent(data.indoor.id, newEvent.trim());
+      setNewEvent("");
+      showToast("Evento agregado", "success");
+      refetch();
+    } catch {
+      showToast("Error al agregar el evento", "error");
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    try {
+      await deleteHistoryEvent(data.indoor.id, eventId);
+      showToast("Evento eliminado", "success");
+      refetch();
+    } catch {
+      showToast("Error al eliminar el evento", "error");
     }
   };
 
@@ -180,17 +212,42 @@ export default function IndoorDetail() {
       {/* Historial */}
       <div className="mb-10">
         <CollapsiblePanel title="Historial">
+          <form onSubmit={handleAddEvent} className="flex gap-2 mb-4">
+            <input
+              type="text"
+              value={newEvent}
+              onChange={(e) => setNewEvent(e.target.value)}
+              placeholder="Agregar evento (ej: le subí la luz 40 cm)"
+              className="flex-1 px-3 py-2 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
+            />
+            <button
+              type="submit"
+              disabled={creatingEvent || !newEvent.trim()}
+              className="px-4 py-2 bg-blue-500 text-white rounded-sm hover:bg-blue-600 disabled:opacity-50 text-xs uppercase tracking-wider"
+            >
+              Agregar
+            </button>
+          </form>
+
           {data.history.length > 0 ? (
             <div className="space-y-2">
-              {data.history.map((event, idx) => (
+              {data.history.map((event) => (
                 <div
-                  key={idx}
-                  className="flex justify-between items-start bg-gray-50 rounded-sm p-3"
+                  key={event.id}
+                  className="flex justify-between items-start gap-2 bg-gray-50 rounded-sm p-3"
                 >
                   <p className="text-gray-800">{event.message}</p>
-                  <span className="text-sm text-gray-600">
-                    {formatDateTime(event.event_ts)}
-                  </span>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-sm text-gray-600">
+                      {formatDateTime(event.event_ts)}
+                    </span>
+                    <button
+                      onClick={() => handleDeleteEvent(event.id)}
+                      className="text-red-500 hover:text-red-700 text-xs"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

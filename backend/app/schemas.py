@@ -42,6 +42,7 @@ class IndoorListItem(BaseModel):
 
 
 class IndoorHistoryItem(BaseModel):
+    id: UUID
     event_ts: datetime
     message: str
 
@@ -445,6 +446,37 @@ class IndoorWateringItem(BaseModel):
     ec: Optional[float] = None
     ph: Optional[float] = None
     runoff_ec: Optional[float] = None
+
+
+class IndoorWateringEventPlant(BaseModel):
+    id: UUID
+    name: str
+
+
+class IndoorWateringEvent(BaseModel):
+    group_id: UUID
+    event_ts: datetime
+    liters: float
+    ec: Optional[float] = None
+    ph: Optional[float] = None
+    runoff_ec: Optional[float] = None
+    note: Optional[str] = None
+    plants: List[IndoorWateringEventPlant]
+
+
+class IndoorWateringUpdate(BaseModel):
+    liters: Optional[float] = None
+    ec: Optional[float] = None
+    ph: Optional[float] = None
+    runoff_ec: Optional[float] = None
+    note: Optional[str] = None
+    date: Optional[date] = None
+    plant_ids: Optional[List[UUID]] = None
+
+
+class IndoorHistoryCreate(BaseModel):
+    message: str
+    event_ts: Optional[datetime] = None
 
 
 # ============ CHAT ============

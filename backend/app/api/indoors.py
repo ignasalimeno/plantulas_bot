@@ -17,6 +17,10 @@ from app.schemas import (
     IndoorWaterRequest,
     IndoorWaterResponse,
     IndoorWateringItem,
+    IndoorWateringEvent,
+    IndoorWateringEventPlant,
+    IndoorWateringUpdate,
+    IndoorHistoryCreate,
 )
 from app.api import get_current_user
 from app.services.indoor_service import (
@@ -25,6 +29,7 @@ from app.services.indoor_service import (
     seed_indoor_defaults,
     register_indoor_watering,
 )
+from app.services.plant_service import recompute_plant_watering
 from app.stages import DEFAULT_STAGE, STAGE_KEYS
 
 router = APIRouter(prefix="/api/indoors", tags=["indoors"])
@@ -173,6 +178,7 @@ async def get_indoor_detail(
     # Build history list
     history_list = [
         IndoorHistoryItem(
+            id=item.id,
             event_ts=item.event_ts,
             message=item.message
         )
@@ -309,7 +315,7 @@ async def water_indoor(
 
     event_date = body.date or date.today()
 
-    plants, names = register_indoor_watering(
+    plants, names, group_id = register_indoor_watering(
         db,
         indoor,
         liters=body.liters,
@@ -349,7 +355,35 @@ async def water_indoor(
     )
 
 
-@router.get("/{indoor_id}/watering-history", response_model=list[IndoorWateringItem])
+def _group_watering_events(db: Session, indoor_id) -> list[IndoorWateringEvent]:
+    rows = (
+        db.query(WateringHistory, Plant)
+        .join(Plant, WateringHistory.plant_id == Plant.id)
+        .filter(Plant.indoor_id == indoor_id)
+        .order_by(WateringHistory.event_ts.desc())
+        .all()
+    )
+    groups: dict = {}
+    order: list = []
+    for wh, plant in rows:
+        gid = wh.group_id
+        if gid not in groups:
+            groups[gid] = IndoorWateringEvent(
+                group_id=gid,
+                event_ts=wh.event_ts,
+                liters=float(wh.liters),
+                ec=float(wh.ec) if wh.ec is not None else None,
+                ph=float(wh.ph) if wh.ph is not None else None,
+                runoff_ec=float(wh.runoff_ec) if wh.runoff_ec is not None else None,
+                note=wh.note,
+                plants=[],
+            )
+            order.append(gid)
+        groups[gid].plants.append(IndoorWateringEventPlant(id=plant.id, name=plant.name))
+    return [groups[g] for g in order]
+
+
+@router.get("/{indoor_id}/watering-history", response_model=list[IndoorWateringEvent])
 async def get_indoor_watering_history(
     indoor_id: str,
     limit: int = 100,
@@ -357,7 +391,7 @@ async def get_indoor_watering_history(
     user: User = Depends(get_current_user),
 ):
     """
-    Get all watering events for an indoor, merged across its plants.
+    Get watering events for an indoor, grouped (one per event, with its plants).
     """
     from uuid import UUID
 
@@ -373,27 +407,200 @@ async def get_indoor_watering_history(
     if not indoor:
         raise HTTPException(status_code=404, detail="Indoor not found")
 
+    return _group_watering_events(db, indoor.id)[:limit]
+
+
+@router.patch("/watering-events/{group_id}", response_model=IndoorWateringEvent)
+async def update_watering_event(
+    group_id: str,
+    body: IndoorWateringUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Update a watering event (all its plants). Optionally replace which plants it includes.
+    """
+    from uuid import UUID
+
+    try:
+        gid = UUID(group_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid group_id format")
+
     rows = (
-        db.query(WateringHistory, Plant)
+        db.query(WateringHistory)
         .join(Plant, WateringHistory.plant_id == Plant.id)
-        .filter(Plant.indoor_id == indoor.id)
-        .order_by(WateringHistory.event_ts.desc())
-        .limit(limit)
+        .filter(WateringHistory.group_id == gid, Plant.user_id == user.id)
         .all()
     )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Watering event not found")
 
-    return [
-        IndoorWateringItem(
-            id=wh.id,
-            plant_id=plant.id,
-            plant_name=plant.name,
-            event_ts=wh.event_ts,
-            liters=float(wh.liters),
-            note=wh.note,
-            ferts=wh.ferts,
-            ec=float(wh.ec) if wh.ec is not None else None,
-            ph=float(wh.ph) if wh.ph is not None else None,
-            runoff_ec=float(wh.runoff_ec) if wh.runoff_ec is not None else None,
-        )
-        for wh, plant in rows
-    ]
+    indoor = rows[0].plant.indoor
+    affected = {r.plant_id for r in rows}
+
+    # Update values on all rows
+    for r in rows:
+        if body.liters is not None:
+            r.liters = body.liters
+        if body.ec is not None:
+            r.ec = body.ec
+        if body.ph is not None:
+            r.ph = body.ph
+        if body.runoff_ec is not None:
+            r.runoff_ec = body.runoff_ec
+        if body.note is not None:
+            r.note = body.note
+        if body.date is not None:
+            r.event_ts = datetime.combine(body.date, r.event_ts.time())
+
+    # Replace the plant set if requested
+    if body.plant_ids is not None:
+        valid = {
+            p.id
+            for p in db.query(Plant).filter(
+                Plant.user_id == user.id, Plant.id.in_(body.plant_ids)
+            ).all()
+        }
+        base = rows[0]
+        for r in list(rows):
+            if r.plant_id not in valid:
+                affected.add(r.plant_id)
+                db.delete(r)
+        existing = {r.plant_id for r in rows}
+        for pid in valid - existing:
+            db.add(WateringHistory(
+                group_id=gid,
+                plant_id=pid,
+                event_ts=base.event_ts,
+                liters=base.liters,
+                note=base.note,
+                ferts=base.ferts,
+                ec=base.ec,
+                ph=base.ph,
+                runoff_ec=base.runoff_ec,
+            ))
+            affected.add(pid)
+
+    db.commit()
+
+    for pid in affected:
+        plant = db.query(Plant).filter(Plant.id == pid).first()
+        if plant:
+            recompute_plant_watering(db, plant)
+    db.commit()
+
+    if indoor:
+        for e in _group_watering_events(db, indoor.id):
+            if e.group_id == gid:
+                return e
+    raise HTTPException(status_code=404, detail="Watering event not found")
+
+
+@router.delete("/watering-events/{group_id}", status_code=204)
+async def delete_watering_event(
+    group_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Delete a watering event (all its plant rows)."""
+    from uuid import UUID
+
+    try:
+        gid = UUID(group_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid group_id format")
+
+    rows = (
+        db.query(WateringHistory)
+        .join(Plant, WateringHistory.plant_id == Plant.id)
+        .filter(WateringHistory.group_id == gid, Plant.user_id == user.id)
+        .all()
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Watering event not found")
+
+    affected = {r.plant_id for r in rows}
+    for r in rows:
+        db.delete(r)
+    db.commit()
+
+    for pid in affected:
+        plant = db.query(Plant).filter(Plant.id == pid).first()
+        if plant:
+            recompute_plant_watering(db, plant)
+    db.commit()
+    return None
+
+
+@router.post("/{indoor_id}/history", response_model=IndoorHistoryItem, status_code=201)
+async def create_indoor_history_event(
+    indoor_id: str,
+    body: IndoorHistoryCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Add a manual history event to an indoor."""
+    from uuid import UUID
+    from app.models import IndoorHistory
+
+    try:
+        indoor_uuid = UUID(indoor_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid indoor_id format")
+
+    indoor = db.query(Indoor).filter(
+        Indoor.id == indoor_uuid,
+        Indoor.user_id == user.id,
+    ).first()
+    if not indoor:
+        raise HTTPException(status_code=404, detail="Indoor not found")
+    if not body.message.strip():
+        raise HTTPException(status_code=400, detail="Message required")
+
+    event = IndoorHistory(
+        indoor_id=indoor.id,
+        event_ts=body.event_ts or datetime.now(),
+        message=body.message.strip(),
+        payload=None,
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return IndoorHistoryItem(id=event.id, event_ts=event.event_ts, message=event.message)
+
+
+@router.delete("/{indoor_id}/history/{event_id}", status_code=204)
+async def delete_indoor_history_event(
+    indoor_id: str,
+    event_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Delete a history event from an indoor."""
+    from uuid import UUID
+    from app.models import IndoorHistory
+
+    try:
+        indoor_uuid = UUID(indoor_id)
+        event_uuid = UUID(event_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid id format")
+
+    indoor = db.query(Indoor).filter(
+        Indoor.id == indoor_uuid,
+        Indoor.user_id == user.id,
+    ).first()
+    if not indoor:
+        raise HTTPException(status_code=404, detail="Indoor not found")
+
+    event = db.query(IndoorHistory).filter(
+        IndoorHistory.id == event_uuid,
+        IndoorHistory.indoor_id == indoor.id,
+    ).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    db.delete(event)
+    db.commit()
+    return None

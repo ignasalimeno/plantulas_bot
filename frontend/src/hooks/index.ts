@@ -27,7 +27,8 @@ import {
   FertilizerApplication,
   IndoorWaterRequest,
   IndoorWaterResponse,
-  IndoorWateringItem,
+  IndoorWateringEvent,
+  IndoorWateringUpdate,
   ChatMessage,
   ChatResponse,
   IndoorDetail,
@@ -994,8 +995,8 @@ export function useClearChat() {
 /**
  * Hook para el historial de riego de un indoor (merge de plantas)
  */
-export function useIndoorWateringHistory(indoorId: string): UseState<IndoorWateringItem[]> {
-  const [data, setData] = useState<IndoorWateringItem[] | null>(null);
+export function useIndoorWateringHistory(indoorId: string): UseState<IndoorWateringEvent[]> {
+  const [data, setData] = useState<IndoorWateringEvent[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
@@ -1004,7 +1005,7 @@ export function useIndoorWateringHistory(indoorId: string): UseState<IndoorWater
     try {
       setLoading(true);
       setError(null);
-      const result = await apiClient.get<IndoorWateringItem[]>(
+      const result = await apiClient.get<IndoorWateringEvent[]>(
         `/api/indoors/${indoorId}/watering-history`
       );
       setData(result);
@@ -1020,6 +1021,114 @@ export function useIndoorWateringHistory(indoorId: string): UseState<IndoorWater
   }, [fetchData]);
 
   return { data, loading, error, refetch: fetchData };
+}
+
+/**
+ * Hook para editar un evento de riego (todas sus plantas)
+ */
+export function useUpdateWateringEvent() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const updateWateringEvent = useCallback(
+    async (groupId: string, data: IndoorWateringUpdate): Promise<IndoorWateringEvent | null> => {
+      try {
+        setLoading(true);
+        setError(null);
+        return await apiClient.patch<IndoorWateringEvent>(
+          `/api/indoors/watering-events/${groupId}`,
+          data
+        );
+      } catch (err) {
+        const e = err instanceof Error ? err : new Error("Failed to update watering event");
+        setError(e);
+        throw e;
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  return { updateWateringEvent, loading, error };
+}
+
+/**
+ * Hook para eliminar un evento de riego
+ */
+export function useDeleteWateringEvent() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const deleteWateringEvent = useCallback(async (groupId: string): Promise<void> => {
+    try {
+      setLoading(true);
+      setError(null);
+      await apiClient.delete(`/api/indoors/watering-events/${groupId}`);
+    } catch (err) {
+      const e = err instanceof Error ? err : new Error("Failed to delete watering event");
+      setError(e);
+      throw e;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { deleteWateringEvent, loading, error };
+}
+
+/**
+ * Hook para agregar un evento manual al historial del indoor
+ */
+export function useCreateIndoorHistoryEvent() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const createHistoryEvent = useCallback(
+    async (indoorId: string, message: string) => {
+      try {
+        setLoading(true);
+        setError(null);
+        return await apiClient.post(`/api/indoors/${indoorId}/history`, { message });
+      } catch (err) {
+        const e = err instanceof Error ? err : new Error("Failed to create history event");
+        setError(e);
+        throw e;
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  return { createHistoryEvent, loading, error };
+}
+
+/**
+ * Hook para eliminar un evento del historial del indoor
+ */
+export function useDeleteIndoorHistoryEvent() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const deleteHistoryEvent = useCallback(
+    async (indoorId: string, eventId: string): Promise<void> => {
+      try {
+        setLoading(true);
+        setError(null);
+        await apiClient.delete(`/api/indoors/${indoorId}/history/${eventId}`);
+      } catch (err) {
+        const e = err instanceof Error ? err : new Error("Failed to delete history event");
+        setError(e);
+        throw e;
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  return { deleteHistoryEvent, loading, error };
 }
 
 /**

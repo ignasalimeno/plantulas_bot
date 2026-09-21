@@ -2,13 +2,15 @@ import { useMemo, useState } from "react";
 import {
   useIndoorWateringHistory,
   useWaterIndoor,
+  useUpdateWateringEvent,
+  useDeleteWateringEvent,
   useFertilizerPlan,
   useFertilizers,
   useToast,
 } from "../hooks";
-import { ToastContainer } from "./Modals";
+import { ToastContainer, ConfirmDialog } from "./Modals";
 import { Chevron } from "./Collapsible";
-import { IndoorDetail, Plant, IndoorWateringItem } from "../api/types";
+import { IndoorDetail, Plant, IndoorWateringEvent } from "../api/types";
 
 const ACCENT = "#7CE38B";
 const AMBER = "#FFB000";
@@ -28,7 +30,7 @@ interface DayBucket {
   ec: number | null;
 }
 
-function aggregateByDay(history: IndoorWateringItem[], days = 14): DayBucket[] {
+function aggregateByDay(history: IndoorWateringEvent[], days = 14): DayBucket[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const buckets: Record<string, { liters: number; ecSum: number; ecCount: number }> = {};
@@ -45,7 +47,7 @@ function aggregateByDay(history: IndoorWateringItem[], days = 14): DayBucket[] {
   history.forEach((h) => {
     const key = h.event_ts.slice(0, 10);
     if (buckets[key]) {
-      buckets[key].liters += h.liters;
+      buckets[key].liters += h.liters * (h.plants?.length || 1);
       if (h.ec != null) {
         buckets[key].ecSum += h.ec;
         buckets[key].ecCount += 1;
@@ -178,9 +180,12 @@ interface RiegoPanelProps {
 
 export function RiegoPanel({ indoor, plants, onUpdated }: RiegoPanelProps) {
   const { data: history, loading, refetch } = useIndoorWateringHistory(indoor.id);
+  const { deleteWateringEvent } = useDeleteWateringEvent();
   const { toasts, showToast, removeToast } = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [open, setOpen] = useState(true);
+  const [editEvent, setEditEvent] = useState<IndoorWateringEvent | null>(null);
+  const [deleteEvent, setDeleteEvent] = useState<IndoorWateringEvent | null>(null);
 
   const chartData = useMemo(
     () => aggregateByDay(history ?? [], 14),
@@ -201,13 +206,31 @@ export function RiegoPanel({ indoor, plants, onUpdated }: RiegoPanelProps) {
     const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
     return (history ?? [])
       .filter((h) => new Date(h.event_ts).getTime() >= cutoff)
-      .reduce((sum, h) => sum + h.liters, 0);
+      .reduce((sum, h) => sum + h.liters * (h.plants?.length || 1), 0);
   }, [history]);
 
   const handleSuccess = () => {
     showToast("Riego registrado", "success");
     refetch();
     onUpdated();
+  };
+
+  const handleEventSaved = () => {
+    showToast("Riego actualizado", "success");
+    refetch();
+    onUpdated();
+  };
+
+  const handleDelete = async () => {
+    if (!deleteEvent) return;
+    try {
+      await deleteWateringEvent(deleteEvent.group_id);
+      showToast("Riego eliminado", "success");
+      refetch();
+      onUpdated();
+    } catch {
+      showToast("Error al eliminar el riego", "error");
+    }
   };
 
   return (
@@ -232,52 +255,69 @@ export function RiegoPanel({ indoor, plants, onUpdated }: RiegoPanelProps) {
 
       {open && (
         <>
-      <div className="grid grid-cols-3 gap-4 mb-5">
-        <div className="bg-gray-50 rounded-sm p-3">
-          <p className="text-[10px] uppercase tracking-widest text-gray-500">Último riego</p>
-          <p className="text-lg font-bold text-gray-800 mt-1">{fmtDate(lastWatering)}</p>
-        </div>
-        <div className="bg-gray-50 rounded-sm p-3">
-          <p className="text-[10px] uppercase tracking-widest text-gray-500">Próximo riego</p>
-          <p className="text-lg font-bold text-gray-800 mt-1">{fmtDate(nextWater)}</p>
-        </div>
-        <div className="bg-gray-50 rounded-sm p-3">
-          <p className="text-[10px] uppercase tracking-widest text-gray-500">Litros (7d)</p>
-          <p className="text-lg font-bold text-blue-500 mt-1">{weekLiters.toFixed(1)} L</p>
-        </div>
-      </div>
-
-      {loading ? (
-        <p className="text-gray-500">Cargando historial...</p>
-      ) : history && history.length > 0 ? (
-        <>
-          <WateringChart data={chartData} />
-          <div className="mt-4">
-            <p className="text-[10px] uppercase tracking-widest text-gray-500 mb-2">
-              Últimos riegos
-            </p>
-            <div className="space-y-1 max-h-48 overflow-auto">
-              {history.slice(0, 12).map((h) => (
-                <div
-                  key={h.id}
-                  className="flex items-center justify-between text-sm bg-gray-50 rounded-sm px-3 py-2"
-                >
-                  <span className="text-gray-800">
-                    <span className="text-blue-500">{h.plant_name}</span>
-                    <span className="text-gray-500"> · {h.liters} L</span>
-                    {h.ec != null && (
-                      <span className="text-gray-500"> · EC {h.ec}</span>
-                    )}
-                  </span>
-                  <span className="text-gray-500 text-xs">{fmtDateTime(h.event_ts)}</span>
-                </div>
-              ))}
+          <div className="grid grid-cols-3 gap-4 mb-5">
+            <div className="bg-gray-50 rounded-sm p-3">
+              <p className="text-[10px] uppercase tracking-widest text-gray-500">Último riego</p>
+              <p className="text-lg font-bold text-gray-800 mt-1">{fmtDate(lastWatering)}</p>
+            </div>
+            <div className="bg-gray-50 rounded-sm p-3">
+              <p className="text-[10px] uppercase tracking-widest text-gray-500">Próximo riego</p>
+              <p className="text-lg font-bold text-gray-800 mt-1">{fmtDate(nextWater)}</p>
+            </div>
+            <div className="bg-gray-50 rounded-sm p-3">
+              <p className="text-[10px] uppercase tracking-widest text-gray-500">Litros (7d)</p>
+              <p className="text-lg font-bold text-blue-500 mt-1">{weekLiters.toFixed(1)} L</p>
             </div>
           </div>
-        </>
-      ) : (
-        <p className="text-gray-500">Todavía no hay riegos registrados.</p>
-      )}
+
+          {loading ? (
+            <p className="text-gray-500">Cargando historial...</p>
+          ) : history && history.length > 0 ? (
+            <>
+              <WateringChart data={chartData} />
+              <div className="mt-4">
+                <p className="text-[10px] uppercase tracking-widest text-gray-500 mb-2">
+                  Últimos riegos
+                </p>
+                <div className="space-y-1 max-h-48 overflow-auto">
+                  {history.slice(0, 12).map((h) => (
+                    <div
+                      key={h.group_id}
+                      className="flex items-center justify-between gap-2 text-sm bg-gray-50 rounded-sm px-3 py-2"
+                    >
+                      <span className="text-gray-800 min-w-0 truncate">
+                        <span className="text-blue-500">
+                          {h.plants.map((p) => p.name).join(", ")}
+                        </span>
+                        <span className="text-gray-500">
+                          {" "}· {h.liters} L
+                          {h.plants.length > 1 ? ` c/u (${(h.liters * h.plants.length).toFixed(1)} L total)` : ""}
+                        </span>
+                        {h.ec != null && <span className="text-gray-500"> · EC {h.ec}</span>}
+                      </span>
+                      <span className="flex items-center gap-2 shrink-0">
+                        <span className="text-gray-500 text-xs">{fmtDateTime(h.event_ts)}</span>
+                        <button
+                          onClick={() => setEditEvent(h)}
+                          className="text-blue-500 hover:text-blue-700 text-xs"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => setDeleteEvent(h)}
+                          className="text-red-500 hover:text-red-700 text-xs"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-gray-500">Todavía no hay riegos registrados.</p>
+          )}
         </>
       )}
 
@@ -288,6 +328,218 @@ export function RiegoPanel({ indoor, plants, onUpdated }: RiegoPanelProps) {
         onClose={() => setModalOpen(false)}
         onSuccess={handleSuccess}
       />
+
+      <WateringEventModal
+        isOpen={!!editEvent}
+        event={editEvent}
+        plants={plants}
+        onClose={() => setEditEvent(null)}
+        onSuccess={handleEventSaved}
+      />
+
+      <ConfirmDialog
+        isOpen={!!deleteEvent}
+        title="Eliminar riego"
+        message={`¿Eliminar el riego del ${deleteEvent ? fmtDate(deleteEvent.event_ts) : ""}? Se borra para todas sus plantas (${deleteEvent?.plants.map((p) => p.name).join(", ") ?? ""}).`}
+        confirmLabel="Eliminar"
+        onConfirm={handleDelete}
+        onClose={() => setDeleteEvent(null)}
+      />
+    </div>
+  );
+}
+
+interface WateringEventModalProps {
+  isOpen: boolean;
+  event: IndoorWateringEvent | null;
+  plants: Plant[];
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function WateringEventModal({
+  isOpen,
+  event,
+  plants,
+  onClose,
+  onSuccess,
+}: WateringEventModalProps) {
+  const { updateWateringEvent, loading, error } = useUpdateWateringEvent();
+  const [liters, setLiters] = useState("");
+  const [ec, setEc] = useState("");
+  const [ph, setPh] = useState("");
+  const [runoffEc, setRunoffEc] = useState("");
+  const [note, setNote] = useState("");
+  const [date, setDate] = useState("");
+  const [selectedPlants, setSelectedPlants] = useState<string[]>([]);
+  const [initializedFor, setInitializedFor] = useState<string | null>(null);
+
+  if (isOpen && event && initializedFor !== event.group_id) {
+    setLiters(String(event.liters));
+    setEc(event.ec != null ? String(event.ec) : "");
+    setPh(event.ph != null ? String(event.ph) : "");
+    setRunoffEc(event.runoff_ec != null ? String(event.runoff_ec) : "");
+    setNote(event.note ?? "");
+    setDate(event.event_ts.slice(0, 10));
+    setSelectedPlants(event.plants.map((p) => p.id));
+    setInitializedFor(event.group_id);
+  }
+
+  if (!isOpen || !event) return null;
+
+  const togglePlant = (id: string) => {
+    setSelectedPlants((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
+    );
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedPlants.length === 0) {
+      alert("Seleccioná al menos una planta");
+      return;
+    }
+    try {
+      await updateWateringEvent(event.group_id, {
+        liters: parseFloat(liters),
+        ec: ec !== "" ? parseFloat(ec) : undefined,
+        ph: ph !== "" ? parseFloat(ph) : undefined,
+        runoff_ec: runoffEc !== "" ? parseFloat(runoffEc) : undefined,
+        note,
+        date: date || undefined,
+        plant_ids: selectedPlants,
+      });
+      setInitializedFor(null);
+      onClose();
+      onSuccess();
+    } catch {
+      // error en estado
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-lg p-6 w-[32rem] max-h-[90vh] overflow-y-auto">
+        <h2 className="text-xl font-bold text-gray-800 mb-4">Editar riego</h2>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-sm">
+            {error.message}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <div className="grid grid-cols-4 gap-3 mb-4">
+            <div>
+              <label className="field-label">Litros *</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.1"
+                value={liters}
+                onChange={(e) => setLiters(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="field-label">EC</label>
+              <input
+                type="number"
+                step="0.01"
+                value={ec}
+                onChange={(e) => setEc(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="field-label">pH</label>
+              <input
+                type="number"
+                step="0.01"
+                value={ph}
+                onChange={(e) => setPh(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="field-label">EC runoff</label>
+              <input
+                type="number"
+                step="0.01"
+                value={runoffEc}
+                onChange={(e) => setRunoffEc(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <label className="field-label">Fecha</label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div className="mb-4">
+            <label className="field-label">Plantas ({selectedPlants.length})</label>
+            <div className="flex flex-wrap gap-2">
+              {plants.map((p) => {
+                const checked = selectedPlants.includes(p.id);
+                return (
+                  <button
+                    type="button"
+                    key={p.id}
+                    onClick={() => togglePlant(p.id)}
+                    className={`px-3 py-1 rounded-sm text-xs border ${
+                      checked
+                        ? "border-blue-500 bg-blue-100 text-blue-800"
+                        : "border-gray-300 text-gray-500"
+                    }`}
+                  >
+                    {checked ? "✓ " : ""}
+                    {p.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <label className="field-label">Nota</label>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-sm text-gray-800 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setInitializedFor(null);
+                onClose();
+              }}
+              disabled={loading}
+              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-sm hover:bg-gray-100 disabled:opacity-50 text-xs uppercase tracking-wider"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-sm hover:bg-blue-600 disabled:opacity-50 text-xs uppercase tracking-wider"
+            >
+              {loading ? "Guardando..." : "Guardar"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

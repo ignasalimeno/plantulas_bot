@@ -6,7 +6,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 from app.models import Plant, WateringHistory
 from app.services import compute_next_water_at
-from uuid import UUID
+from uuid import UUID, uuid4
 
 
 def register_watering(
@@ -20,6 +20,7 @@ def register_watering(
     ec: float | None = None,
     ph: float | None = None,
     runoff_ec: float | None = None,
+    group_id: UUID | None = None,
 ) -> tuple[Plant, WateringHistory]:
     """
     Register a watering event and update plant next_water_at.
@@ -46,6 +47,7 @@ def register_watering(
         ferts_dict = {item["name"]: item["amount"] for item in ferts}
     
     watering_history = WateringHistory(
+        group_id=group_id or uuid4(),
         plant_id=plant.id,
         event_ts=event_ts,
         liters=Decimal(str(liters)),
@@ -77,6 +79,24 @@ def get_plant(db: Session, user_id: UUID, plant_id: UUID) -> Plant | None:
         Plant.id == plant_id,
         Plant.user_id == user_id
     ).first()
+
+
+def recompute_plant_watering(db: Session, plant: Plant) -> None:
+    """Recompute last_watered_at/next_water_at from the remaining watering history."""
+    latest = (
+        db.query(WateringHistory)
+        .filter(WateringHistory.plant_id == plant.id)
+        .order_by(WateringHistory.event_ts.desc())
+        .first()
+    )
+    if latest:
+        plant.last_watered_at = latest.event_ts.date()
+        plant.next_water_at = compute_next_water_at(
+            plant.last_watered_at, plant.watering_interval_days
+        )
+    else:
+        plant.last_watered_at = None
+        plant.next_water_at = None
 
 
 def update_plant(db: Session, plant: Plant, updates: dict) -> Plant:

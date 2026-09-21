@@ -269,7 +269,7 @@ def _execute_mutation(db: Session, user: User, name: str, args: dict) -> dict:
         if liters <= 0:
             return {"error": "Litros inválidos"}
         event_date = date.today()
-        plants, names = register_indoor_watering(
+        plants, names, _group_id = register_indoor_watering(
             db,
             indoor,
             liters=liters,

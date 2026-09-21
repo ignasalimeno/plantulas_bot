@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.models import Indoor, Plant, IndoorHistory, StageTarget, Task
 from app.stages import stage_label, DEFAULT_STAGE_TARGETS, DEFAULT_TASKS
-from uuid import UUID
+from uuid import UUID, uuid4
 
 
 def get_indoor_with_plants(db: Session, user_id: UUID, indoor_id: UUID) -> tuple[Indoor, list[Plant], list[IndoorHistory]]:
@@ -166,10 +166,10 @@ def register_indoor_watering(
     ph: float | None = None,
     runoff_ec: float | None = None,
     plant_ids: list | None = None,
-) -> tuple[list[Plant], list[str]]:
+) -> tuple[list[Plant], list[str], UUID]:
     """
     Register a watering for all (or a subset of) plants in an indoor.
-    Returns the watered plants and their names.
+    Returns the watered plants, their names and the event group_id.
     """
     from app.services.plant_service import register_watering
 
@@ -181,6 +181,7 @@ def register_indoor_watering(
         wanted = {str(pid) for pid in plant_ids}
         plants = [p for p in plants if str(p.id) in wanted]
 
+    group_id = uuid4()
     names: list[str] = []
     for plant in plants:
         register_watering(
@@ -193,6 +194,7 @@ def register_indoor_watering(
             ec=ec,
             ph=ph,
             runoff_ec=runoff_ec,
+            group_id=group_id,
         )
         names.append(plant.name)
 
@@ -205,4 +207,4 @@ def register_indoor_watering(
         ))
         db.commit()
 
-    return plants, names
+    return plants, names, group_id

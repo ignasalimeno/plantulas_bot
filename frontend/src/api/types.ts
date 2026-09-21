@@ -36,6 +36,7 @@ export interface Plant {
 }
 
 export interface IndoorHistory {
+  id: string;
   event_ts: string; // ISO datetime
   message: string;
 }
@@ -342,6 +343,32 @@ export interface IndoorWateringItem {
   ec?: number | null;
   ph?: number | null;
   runoff_ec?: number | null;
+}
+
+export interface IndoorWateringEventPlant {
+  id: string;
+  name: string;
+}
+
+export interface IndoorWateringEvent {
+  group_id: string;
+  event_ts: string;
+  liters: number;
+  ec: number | null;
+  ph: number | null;
+  runoff_ec: number | null;
+  note: string | null;
+  plants: IndoorWateringEventPlant[];
+}
+
+export interface IndoorWateringUpdate {
+  liters?: number;
+  ec?: number;
+  ph?: number;
+  runoff_ec?: number;
+  note?: string;
+  date?: string;
+  plant_ids?: string[];
 }
 
 export interface ApiError {

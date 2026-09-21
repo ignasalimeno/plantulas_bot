@@ -132,6 +132,7 @@ class WateringHistory(Base):
     __tablename__ = "watering_history"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    group_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     plant_id = Column(UUID(as_uuid=True), ForeignKey("plants.id", ondelete="CASCADE"), nullable=False, index=True)
     event_ts = Column(DateTime(timezone=True), nullable=False, index=True)
     liters = Column(Numeric(6, 3), nullable=False)
