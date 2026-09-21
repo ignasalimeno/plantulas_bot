@@ -31,6 +31,7 @@ from app.services.indoor_service import (
 )
 from app.services.plant_service import recompute_plant_watering
 from app.stages import DEFAULT_STAGE, STAGE_KEYS
+from app.timeutils import now
 
 router = APIRouter(prefix="/api/indoors", tags=["indoors"])
 
@@ -86,7 +87,7 @@ async def create_indoor(
     # Create history entry
     history = IndoorHistory(
         indoor_id=indoor.id,
-        event_ts=datetime.now(),
+        event_ts=now(),
         message="Indoor creado.",
         payload=None
     )
@@ -103,17 +104,17 @@ async def create_indoor(
         temp_c=float(indoor.temp_c) if indoor.temp_c else None,
         humidity=float(indoor.humidity) if indoor.humidity else None,
         fan_location=indoor.fan_location,
-        extractor_top=indoor.extractor_top,
-        extractor_bottom=indoor.extractor_bottom,
-        fan=indoor.fan,
-        humidifier=indoor.humidifier,
+        extractor_top=bool(indoor.extractor_top),
+        extractor_bottom=bool(indoor.extractor_bottom),
+        fan=bool(indoor.fan),
+        humidifier=bool(indoor.humidifier),
         humidifier_on_below_humidity=float(indoor.humidifier_on_below_humidity) if indoor.humidifier_on_below_humidity is not None else None,
         humidifier_off_above_humidity=float(indoor.humidifier_off_above_humidity) if indoor.humidifier_off_above_humidity is not None else None,
         humidifier_on_above_temp=float(indoor.humidifier_on_above_temp) if indoor.humidifier_on_above_temp is not None else None,
         humidifier_off_below_temp=float(indoor.humidifier_off_below_temp) if indoor.humidifier_off_below_temp is not None else None,
-        humidifier_mode=indoor.humidifier_mode,
-        ac=indoor.ac,
-        ac_mode=indoor.ac_mode,
+        humidifier_mode=indoor.humidifier_mode or "auto",
+        ac=bool(indoor.ac),
+        ac_mode=indoor.ac_mode or "auto",
         ac_on_above_temp=float(indoor.ac_on_above_temp) if indoor.ac_on_above_temp is not None else None,
         ac_off_below_temp=float(indoor.ac_off_below_temp) if indoor.ac_off_below_temp is not None else None,
         ac_hvac_mode=indoor.ac_hvac_mode,
@@ -203,17 +204,17 @@ async def get_indoor_detail(
         temp_c=float(indoor.temp_c) if indoor.temp_c else None,
         humidity=float(indoor.humidity) if indoor.humidity else None,
         fan_location=indoor.fan_location,
-        extractor_top=indoor.extractor_top,
-        extractor_bottom=indoor.extractor_bottom,
-        fan=indoor.fan,
-        humidifier=indoor.humidifier,
+        extractor_top=bool(indoor.extractor_top),
+        extractor_bottom=bool(indoor.extractor_bottom),
+        fan=bool(indoor.fan),
+        humidifier=bool(indoor.humidifier),
         humidifier_on_below_humidity=float(indoor.humidifier_on_below_humidity) if indoor.humidifier_on_below_humidity is not None else None,
         humidifier_off_above_humidity=float(indoor.humidifier_off_above_humidity) if indoor.humidifier_off_above_humidity is not None else None,
         humidifier_on_above_temp=float(indoor.humidifier_on_above_temp) if indoor.humidifier_on_above_temp is not None else None,
         humidifier_off_below_temp=float(indoor.humidifier_off_below_temp) if indoor.humidifier_off_below_temp is not None else None,
-        humidifier_mode=indoor.humidifier_mode,
-        ac=indoor.ac,
-        ac_mode=indoor.ac_mode,
+        humidifier_mode=indoor.humidifier_mode or "auto",
+        ac=bool(indoor.ac),
+        ac_mode=indoor.ac_mode or "auto",
         ac_on_above_temp=float(indoor.ac_on_above_temp) if indoor.ac_on_above_temp is not None else None,
         ac_off_below_temp=float(indoor.ac_off_below_temp) if indoor.ac_off_below_temp is not None else None,
         ac_hvac_mode=indoor.ac_hvac_mode,
@@ -294,17 +295,17 @@ async def update_indoor_detail(
         temp_c=float(updated_indoor.temp_c) if updated_indoor.temp_c else None,
         humidity=float(updated_indoor.humidity) if updated_indoor.humidity else None,
         fan_location=updated_indoor.fan_location,
-        extractor_top=updated_indoor.extractor_top,
-        extractor_bottom=updated_indoor.extractor_bottom,
-        fan=updated_indoor.fan,
-        humidifier=updated_indoor.humidifier,
+        extractor_top=bool(updated_indoor.extractor_top),
+        extractor_bottom=bool(updated_indoor.extractor_bottom),
+        fan=bool(updated_indoor.fan),
+        humidifier=bool(updated_indoor.humidifier),
         humidifier_on_below_humidity=float(updated_indoor.humidifier_on_below_humidity) if updated_indoor.humidifier_on_below_humidity is not None else None,
         humidifier_off_above_humidity=float(updated_indoor.humidifier_off_above_humidity) if updated_indoor.humidifier_off_above_humidity is not None else None,
         humidifier_on_above_temp=float(updated_indoor.humidifier_on_above_temp) if updated_indoor.humidifier_on_above_temp is not None else None,
         humidifier_off_below_temp=float(updated_indoor.humidifier_off_below_temp) if updated_indoor.humidifier_off_below_temp is not None else None,
-        humidifier_mode=updated_indoor.humidifier_mode,
-        ac=updated_indoor.ac,
-        ac_mode=updated_indoor.ac_mode,
+        humidifier_mode=updated_indoor.humidifier_mode or "auto",
+        ac=bool(updated_indoor.ac),
+        ac_mode=updated_indoor.ac_mode or "auto",
         ac_on_above_temp=float(updated_indoor.ac_on_above_temp) if updated_indoor.ac_on_above_temp is not None else None,
         ac_off_below_temp=float(updated_indoor.ac_off_below_temp) if updated_indoor.ac_off_below_temp is not None else None,
         ac_hvac_mode=updated_indoor.ac_hvac_mode,
@@ -359,7 +360,7 @@ async def water_indoor(
 
     applications_created = 0
     if body.fertilizers:
-        applied_at = datetime.combine(event_date, datetime.now().time())
+        applied_at = datetime.combine(event_date, now().time())
         for item in body.fertilizers:
             fert = db.query(Fertilizer).filter(
                 Fertilizer.id == item.fertilizer_id,
@@ -590,7 +591,7 @@ async def create_indoor_history_event(
 
     event = IndoorHistory(
         indoor_id=indoor.id,
-        event_ts=body.event_ts or datetime.now(),
+        event_ts=body.event_ts or now(),
         message=body.message.strip(),
         payload=None,
     )

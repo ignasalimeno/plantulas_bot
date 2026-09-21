@@ -21,6 +21,7 @@ from app.schemas import (
 )
 from app.api import get_current_user
 from app.services import device_service
+from app.timeutils import now
 
 router = APIRouter(prefix="/api", tags=["devices"])
 
@@ -65,7 +66,7 @@ async def device_telemetry(
     """Ingest a sensor reading from the bridge."""
     measurement = Measurement(
         indoor_id=device.indoor_id,
-        event_ts=datetime.now(),
+        event_ts=now(),
         temp_c=Decimal(str(body.temp_c)) if body.temp_c is not None else None,
         humidity=Decimal(str(body.humidity)) if body.humidity is not None else None,
         ppfd=body.ppfd,
@@ -75,7 +76,7 @@ async def device_telemetry(
         note=body.note,
     )
     db.add(measurement)
-    device.last_seen = datetime.now()
+    device.last_seen = now()
     db.commit()
     return {"ok": True, "measurement_id": str(measurement.id)}
 
@@ -86,7 +87,7 @@ async def device_commands(
     device: Device = Depends(get_current_device),
 ):
     """Return the desired state of each actuator for the device's indoor."""
-    device.last_seen = datetime.now()
+    device.last_seen = now()
     db.commit()
     indoor = db.query(Indoor).filter(Indoor.id == device.indoor_id).first()
     if not indoor:
@@ -104,9 +105,9 @@ async def device_state(
     device.reported_state = {
         "humidifier": body.humidifier,
         "ac": body.ac,
-        "at": datetime.now().isoformat(),
+        "at": now().isoformat(),
     }
-    device.last_seen = datetime.now()
+    device.last_seen = now()
     db.commit()
     return {"ok": True}
 

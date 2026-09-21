@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.models import Indoor, Plant, IndoorHistory, StageTarget, Task
 from app.stages import stage_label, DEFAULT_STAGE_TARGETS, DEFAULT_TASKS
+from app.timeutils import now
 from uuid import UUID, uuid4
 
 
@@ -113,7 +114,7 @@ def update_indoor(
             indoor.stage_started_at = date.today()
         db.add(IndoorHistory(
             indoor_id=indoor.id,
-            event_ts=datetime.now(),
+            event_ts=now(),
             message=f"Cambio de etapa: {stage_label(old_stage)} → {stage_label(stage)}.",
             payload={"stage": stage, "previous_stage": old_stage},
         ))
@@ -127,7 +128,7 @@ def update_indoor(
         
         history = IndoorHistory(
             indoor_id=indoor.id,
-            event_ts=datetime.now(),
+            event_ts=now(),
             message=message,
             payload=None
         )
@@ -219,7 +220,7 @@ def register_indoor_watering(
     if plants:
         db.add(IndoorHistory(
             indoor_id=indoor.id,
-            event_ts=datetime.now(),
+            event_ts=now(),
             message=f"Riego general: {liters} L a {len(plants)} planta(s).",
             payload={"liters": liters, "plants": len(plants)},
         ))

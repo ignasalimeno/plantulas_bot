@@ -23,6 +23,7 @@ from app.models import (
 )
 from app.stages import stage_label
 from app.services.indoor_service import register_indoor_watering
+from app.timeutils import now
 
 READ_TOOLS = {"get_indoor_status", "list_tasks", "list_fertilizers"}
 MUTATION_TOOLS = {"water_indoor", "add_measurement", "apply_fertilizer", "complete_task", "set_humidifier"}
@@ -287,7 +288,7 @@ def _execute_mutation(db: Session, user: User, name: str, args: dict) -> dict:
             db.add(FertilizerApplication(
                 indoor_id=indoor.id,
                 fertilizer_id=fert.id,
-                applied_at=datetime.now(),
+                applied_at=now(),
                 amount=Decimal(str(f["amount"])) if f.get("amount") is not None else None,
                 note=args.get("note"),
             ))
@@ -306,7 +307,7 @@ def _execute_mutation(db: Session, user: User, name: str, args: dict) -> dict:
             return {"error": "Indoor no encontrado"}
         m = Measurement(
             indoor_id=indoor.id,
-            event_ts=datetime.now(),
+            event_ts=now(),
             temp_c=Decimal(str(args["temp_c"])) if args.get("temp_c") is not None else None,
             humidity=Decimal(str(args["humidity"])) if args.get("humidity") is not None else None,
             ph=Decimal(str(args["ph"])) if args.get("ph") is not None else None,
@@ -332,7 +333,7 @@ def _execute_mutation(db: Session, user: User, name: str, args: dict) -> dict:
         db.add(FertilizerApplication(
             indoor_id=indoor.id,
             fertilizer_id=fert.id,
-            applied_at=datetime.now(),
+            applied_at=now(),
             amount=Decimal(str(amount)) if amount is not None else None,
             note=args.get("note"),
         ))
@@ -358,7 +359,7 @@ def _execute_mutation(db: Session, user: User, name: str, args: dict) -> dict:
             return {"error": "Tarea no encontrada"}
         is_done = args.get("is_done", True)
         task.is_done = bool(is_done)
-        task.completed_at = datetime.now() if is_done else None
+        task.completed_at = now() if is_done else None
         db.commit()
         return {
             "ok": True,

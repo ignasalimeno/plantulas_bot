@@ -145,7 +145,8 @@ export function AmbientePanel({
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState<IndoorUpdateRequest>({});
 
-  const latest = measurements && measurements.length > 0 ? measurements[0] : null;
+  const latest =
+    measurements?.find((m) => m.temp_c != null || m.humidity != null) ?? null;
   const target = targets?.find((t) => t.stage === indoor.stage) ?? null;
 
   const handleChange = (field: keyof IndoorUpdateRequest, value: any) => {

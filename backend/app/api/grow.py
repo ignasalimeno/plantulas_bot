@@ -22,6 +22,7 @@ from app.schemas import (
 )
 from app.api import get_current_user
 from app.stages import STAGES, STAGE_KEYS
+from app.timeutils import now
 
 router = APIRouter(prefix="/api", tags=["grow"])
 
@@ -170,7 +171,7 @@ async def create_measurement(
 
     measurement = Measurement(
         indoor_id=indoor.id,
-        event_ts=body.event_ts or datetime.now(),
+        event_ts=body.event_ts or now(),
         temp_c=Decimal(str(body.temp_c)) if body.temp_c is not None else None,
         humidity=Decimal(str(body.humidity)) if body.humidity is not None else None,
         ph=Decimal(str(body.ph)) if body.ph is not None else None,
@@ -296,7 +297,7 @@ async def update_task(
         setattr(task, field, value)
 
     if "is_done" in updates:
-        task.completed_at = datetime.now() if updates["is_done"] else None
+        task.completed_at = now() if updates["is_done"] else None
 
     db.commit()
     db.refresh(task)

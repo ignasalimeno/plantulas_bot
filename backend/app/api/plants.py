@@ -18,6 +18,7 @@ from app.schemas import (
 )
 from app.api import get_current_user
 from app.services.plant_service import register_watering, get_plant, update_plant
+from app.timeutils import now
 
 router = APIRouter(prefix="/api/plants", tags=["plants"])
 
@@ -91,7 +92,7 @@ async def create_plant(
     if plant.indoor_id:
         history = IndoorHistory(
             indoor_id=plant.indoor_id,
-            event_ts=datetime.now(),
+            event_ts=now(),
             message=f"Se añadió la planta '{plant.name}'.",
             payload=None
         )
@@ -279,7 +280,7 @@ async def update_plant_detail(
             for message in messages:
                 db.add(IndoorHistory(
                     indoor_id=target_indoor_id,
-                    event_ts=datetime.now(),
+                    event_ts=now(),
                     message=message,
                     payload=None,
                 ))

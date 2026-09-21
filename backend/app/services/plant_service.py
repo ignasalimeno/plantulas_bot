@@ -6,6 +6,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 from app.models import Plant, WateringHistory
 from app.services import compute_next_water_at
+from app.timeutils import now
 from uuid import UUID, uuid4
 
 
@@ -39,7 +40,7 @@ def register_watering(
         return None, None
     
     # Create watering history
-    event_ts = datetime.combine(event_date, datetime.now().time())
+    event_ts = datetime.combine(event_date, now().timetz())
     
     # Convert ferts list to dict for JSONB
     ferts_dict = None

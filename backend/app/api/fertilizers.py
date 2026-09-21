@@ -21,6 +21,7 @@ from app.schemas import (
     ApplicationItem,
 )
 from app.api import get_current_user
+from app.timeutils import now
 
 router = APIRouter(prefix="/api", tags=["fertilizers"])
 
@@ -251,7 +252,7 @@ async def create_fertilizer_application(
     app = FertilizerApplication(
         indoor_id=indoor.id,
         fertilizer_id=fert.id,
-        applied_at=body.applied_at or datetime.now(),
+        applied_at=body.applied_at or now(),
         amount=Decimal(str(body.amount)) if body.amount is not None else None,
         note=body.note,
     )

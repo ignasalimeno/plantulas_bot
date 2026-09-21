@@ -53,7 +53,7 @@ class Indoor(Base):
     humidifier_on_above_temp = Column(Numeric(5, 2))  # turn ON if temp above (cooling)
     humidifier_off_below_temp = Column(Numeric(5, 2))  # turn OFF if temp below
     # Air conditioner (controlled via IR)
-    ac = Column(Boolean, default=False)
+    ac = Column(Boolean, nullable=False, default=False, server_default="false")
     ac_mode = Column(Text, nullable=False, server_default="auto")  # auto | manual | off
     ac_on_above_temp = Column(Numeric(5, 2))
     ac_off_below_temp = Column(Numeric(5, 2))
