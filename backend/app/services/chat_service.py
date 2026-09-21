@@ -50,7 +50,7 @@ def _tool(name: str, description: str, properties: dict, required: list | None =
 TOOLS = [
     _tool(
         "get_indoor_status",
-        "Devuelve el estado de un indoor: etapa, objetivos, próximos riegos, última medición y tareas pendientes.",
+        "Devuelve el estado de un indoor: etapa, objetivos, próximos riegos, ambiente actual (temperatura, humedad, EC, pH, runoff, PPFD y luz) y tareas pendientes.",
         {
             "indoor_id": {"type": "string", "description": "ID del indoor (opcional)"},
             "indoor_name": {"type": "string", "description": "Nombre del indoor (opcional)"},
@@ -166,6 +166,51 @@ def _resolve_indoor(db: Session, user: User, indoor_id: str | None, indoor_name:
     return indoors[0] if len(indoors) == 1 else None
 
 
+def _current_env(db: Session, indoor: Indoor) -> dict:
+    """Best-known current environment for an indoor.
+
+    For every measurement field we take the most recent Measurement that
+    actually has a value (so a PPFD-only reading does not mask an older
+    temperature). Temperature and humidity fall back to the values stored
+    on the indoor (the ones edited from the Ambiente panel).
+    """
+
+    def latest(field: str) -> Measurement | None:
+        column = getattr(Measurement, field)
+        return (
+            db.query(Measurement)
+            .filter(Measurement.indoor_id == indoor.id, column.isnot(None))
+            .order_by(Measurement.event_ts.desc())
+            .first()
+        )
+
+    temp_row = latest("temp_c")
+    humidity_row = latest("humidity")
+    ec_row = latest("ec")
+    ph_row = latest("ph")
+    runoff_row = latest("runoff_ec")
+    ppfd_row = latest("ppfd")
+
+    temp_c = temp_row.temp_c if temp_row else None
+    if temp_c is None:
+        temp_c = indoor.temp_c
+    humidity = humidity_row.humidity if humidity_row else None
+    if humidity is None:
+        humidity = indoor.humidity
+
+    return {
+        "temp_c": _num(temp_c),
+        "humidity": _num(humidity),
+        "ec": _num(ec_row.ec) if ec_row else None,
+        "ph": _num(ph_row.ph) if ph_row else None,
+        "runoff_ec": _num(runoff_row.runoff_ec) if runoff_row else None,
+        "ppfd": ppfd_row.ppfd if ppfd_row else None,
+        "light_height_cm": _num(indoor.light_height_cm),
+        "light_power_pct": indoor.light_power_pct,
+        "light_schedule": indoor.light_schedule,
+    }
+
+
 def _indoor_status(db: Session, indoor: Indoor) -> dict:
     target = (
         db.query(StageTarget)
@@ -210,16 +255,8 @@ def _indoor_status(db: Session, indoor: Indoor) -> dict:
         }
         if target
         else None,
-        "latest_measurement": {
-            "at": latest.event_ts.isoformat() if latest else None,
-            "temp_c": _num(latest.temp_c) if latest else None,
-            "humidity": _num(latest.humidity) if latest else None,
-            "ph": _num(latest.ph) if latest else None,
-            "ec": _num(latest.ec) if latest else None,
-            "ppfd": latest.ppfd if latest else None,
-        }
-        if latest
-        else None,
+        "current_environment": _current_env(db, indoor),
+        "latest_measurement_at": latest.event_ts.isoformat() if latest else None,
         "pending_tasks": [{"id": str(t.id), "title": t.title} for t in pending_tasks],
     }
 
@@ -318,7 +355,22 @@ def _execute_mutation(db: Session, user: User, name: str, args: dict) -> dict:
         )
         db.add(m)
         db.commit()
-        return {"ok": True, "summary": f"Medición registrada en {indoor.name}."}
+
+        parts = []
+        if args.get("temp_c") is not None:
+            parts.append(f"temp {args['temp_c']}°C")
+        if args.get("humidity") is not None:
+            parts.append(f"HR {args['humidity']}%")
+        if args.get("ec") is not None:
+            parts.append(f"EC {args['ec']}")
+        if args.get("ph") is not None:
+            parts.append(f"pH {args['ph']}")
+        if args.get("runoff_ec") is not None:
+            parts.append(f"runoff EC {args['runoff_ec']}")
+        if args.get("ppfd") is not None:
+            parts.append(f"PPFD {args['ppfd']}")
+        detail = f" ({', '.join(parts)})" if parts else ""
+        return {"ok": True, "summary": f"Medición registrada en {indoor.name}{detail}."}
 
     if name == "apply_fertilizer":
         indoor = _resolve_indoor(db, user, args.get("indoor_id"), args.get("indoor_name"))
@@ -414,12 +466,12 @@ def _build_context(db: Session, user: User) -> str:
                 f"luz {t['light_height'][0]}-{t['light_height'][1]}cm, PPFD {t['ppfd'][0]}-{t['ppfd'][1]}, "
                 f"horario {t['light_schedule']}"
             )
-        if status["latest_measurement"]:
-            m = status["latest_measurement"]
-            lines.append(
-                f"  última medición ({m['at']}): temp={m['temp_c']}, HR={m['humidity']}, "
-                f"EC={m['ec']}, pH={m['ph']}, PPFD={m['ppfd']}"
-            )
+        env = status["current_environment"]
+        lines.append(
+            f"  ambiente actual: temp={env['temp_c']}°C, HR={env['humidity']}%, "
+            f"EC={env['ec']}, pH={env['ph']}, runoff_EC={env['runoff_ec']}, PPFD={env['ppfd']}, "
+            f"luz={env['light_height_cm']}cm/{env['light_power_pct']}%, horario {env['light_schedule']}"
+        )
         if status["pending_tasks"]:
             tasks = ", ".join(f"{t['title']} (id={t['id']})" for t in status["pending_tasks"])
             lines.append(f"  tareas pendientes: {tasks}")
@@ -443,7 +495,9 @@ Respondés SIEMPRE en español, de forma clara, breve y concreta.
 
 REGLAS:
 - Para consultar datos usá las tools de lectura.
+- Cada indoor tiene un campo "ambiente actual" (temp, HR, EC, pH, runoff_EC, PPFD y luz) con los últimos valores conocidos. Usá ESOS valores para responder preguntas sobre temperatura, humedad, EC, pH o PPFD. Si un valor es null, recién ahí decí que no está registrado.
 - Para acciones que MODIFICAN datos (regar, registrar medición, aplicar fertilizante, completar tarea) llamá a la tool correspondiente; el sistema le pedirá confirmación al usuario antes de ejecutar. Nunca digas que ya se ejecutó algo que está pendiente de confirmación.
+- Si el usuario te dicta un valor de ambiente (ej: "la carpa está a 24°C y 60% HR"), usá add_measurement para registrarlo (queda pendiente de confirmación).
 - No inventes datos: si falta un id o un valor, pedíselo al usuario.
 - Fechas en formato YYYY-MM-DD.
 - Si el usuario menciona un indoor por nombre, usá el id que figura en el contexto.
