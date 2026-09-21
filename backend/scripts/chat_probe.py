@@ -20,8 +20,9 @@ from app.services import chat_service
 
 DEFAULT_QUESTIONS = [
     "¿Qué temperatura hay en la Carpa?",
-    "¿Y la humedad?",
-    "¿Cómo está el EC?",
+    "Dame un resumen de las mediciones de los últimos 14 días",
+    "¿Qué tareas pendientes tengo?",
+    "Analizá la carpa y decime si voy bien",
 ]
 
 

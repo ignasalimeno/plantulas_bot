@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     db_echo: bool = False
     openai_api_key: str = ""
     ai_model: str = "gpt-4o-mini"
+    ai_analysis_model: str = "o4-mini"
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
 

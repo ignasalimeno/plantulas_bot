@@ -43,7 +43,7 @@ plantulas_bot/
 - **Mediciones** en el tiempo (temp, humedad, pH, EC, runoff, PPFD).
 - **Fertilizantes:** catálogo + plan por indoor + aplicaciones.
 - **Checklist** de monitoreo por etapa.
-- **Chatbot AI (web):** consulta el estado y ejecuta acciones (regar, medición, ferti, tarea, humidificador) **con confirmación**.
+- **Chatbot AI (web):** consulta el estado e historial, analiza el cultivo (modelo avanzado) y ejecuta acciones (regar, medición, ferti, tarea, etapa, luz, clima) **con confirmación**.
 
 ## Desarrollo local
 
@@ -95,6 +95,7 @@ App: `http://localhost:5174`
 | `CORS_ORIGINS` | Orígenes permitidos (CSV) |
 | `OPENAI_API_KEY` | API key de OpenAI (chatbot) |
 | `AI_MODEL` | Modelo (default `gpt-4o-mini`) |
+| `AI_ANALYSIS_MODEL` | Modelo para análisis profundo del chatbot (default `o4-mini`) |
 | `VITE_API_BASE_URL` | URL del backend para el frontend |
 
 ## Deploy
