@@ -1,10 +1,18 @@
 import { useState } from "react";
-import { useMeasurements, useStageTargets, useUpdateIndoor, useToast } from "../hooks";
+import {
+  useMeasurements,
+  useStageTargets,
+  useUpdateIndoor,
+  useCreateMeasurement,
+  useToast,
+} from "../hooks";
 import { ToastContainer } from "./Modals";
 import { Chevron } from "./Collapsible";
 import { IndoorDetail, IndoorUpdateRequest } from "../api/types";
 
 type Status = "ok" | "low" | "high" | "none";
+
+type AmbienteForm = IndoorUpdateRequest & { ppfd?: number | null };
 
 const STATUS_STYLES: Record<Status, { card: string; value: string; badge: string; label: string }> = {
   ok: {
@@ -121,10 +129,12 @@ function IndicatorCard({
         </span>
       </div>
       <p className={`text-2xl font-bold leading-none mt-2 ${s.value}`}>{value}</p>
-      <p className="text-[10px] uppercase tracking-widest text-gray-500 mt-1">
-        ideal {fmtNum(min)}–{fmtNum(max)}
-        {unit ? ` ${unit}` : ""}
-      </p>
+      {(min != null || max != null) && (
+        <p className="text-[10px] uppercase tracking-widest text-gray-500 mt-1">
+          ideal {fmtNum(min)}–{fmtNum(max)}
+          {unit ? ` ${unit}` : ""}
+        </p>
+      )}
     </div>
   );
 }
@@ -136,26 +146,33 @@ export function AmbientePanel({
   indoor: IndoorDetail;
   onUpdated: () => void;
 }) {
-  const { data: measurements } = useMeasurements(indoor.id);
+  const { data: measurements, refetch: refetchMeasurements } = useMeasurements(indoor.id);
   const { data: targets } = useStageTargets(indoor.id);
   const { updateIndoor, loading: saving } = useUpdateIndoor();
+  const { createMeasurement } = useCreateMeasurement();
   const { toasts, showToast, removeToast } = useToast();
 
   const [open, setOpen] = useState(true);
   const [editMode, setEditMode] = useState(false);
-  const [formData, setFormData] = useState<IndoorUpdateRequest>({});
+  const [formData, setFormData] = useState<AmbienteForm>({});
 
   const latest =
     measurements?.find((m) => m.temp_c != null || m.humidity != null) ?? null;
+  const latestPpfd = measurements?.find((m) => m.ppfd != null) ?? null;
   const target = targets?.find((t) => t.stage === indoor.stage) ?? null;
 
-  const handleChange = (field: keyof IndoorUpdateRequest, value: any) => {
+  const handleChange = (field: keyof AmbienteForm, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSave = async () => {
     try {
-      await updateIndoor(indoor.id, formData);
+      const { ppfd, ...indoorUpdates } = formData;
+      await updateIndoor(indoor.id, indoorUpdates);
+      if (ppfd != null && ppfd !== latestPpfd?.ppfd) {
+        await createMeasurement(indoor.id, { ppfd });
+        refetchMeasurements();
+      }
       showToast("Ambiente guardado", "success");
       setEditMode(false);
       setFormData({});
@@ -247,12 +264,20 @@ export function AmbientePanel({
       status: rangeStatus(indoor.light_height_cm, target?.light_height_min, target?.light_height_max),
     },
     {
+      label: "Potencia",
+      value: fmtNum(indoor.light_power_pct, 0),
+      min: null,
+      max: null,
+      unit: "%",
+      status: "none" as Status,
+    },
+    {
       label: "PPFD",
-      value: fmtNum(latest?.ppfd, 0),
+      value: fmtNum(latestPpfd?.ppfd, 0),
       min: target?.ppfd_min,
       max: target?.ppfd_max,
       unit: "",
-      status: rangeStatus(latest?.ppfd, target?.ppfd_min, target?.ppfd_max),
+      status: rangeStatus(latestPpfd?.ppfd, target?.ppfd_min, target?.ppfd_max),
     },
   ];
 
@@ -515,7 +540,7 @@ export function AmbientePanel({
 
             <div>
               <p className="field-label">Luz</p>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Altura (cm)</label>
                   <input
@@ -539,6 +564,18 @@ export function AmbientePanel({
                     max="100"
                     value={formData.light_power_pct ?? indoor.light_power_pct ?? ""}
                     onChange={(e) => handleChange("light_power_pct", parseInt(e.target.value))}
+                    className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">PPFD</label>
+                  <input
+                    type="number"
+                    step="1"
+                    value={formData.ppfd ?? latestPpfd?.ppfd ?? ""}
+                    onChange={(e) =>
+                      handleChange("ppfd", e.target.value ? parseInt(e.target.value) : null)
+                    }
                     className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
                   />
                 </div>
