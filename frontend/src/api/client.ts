@@ -19,7 +19,7 @@ class ApiClient {
 
   private getTelegramUserId(): string {
     const id = localStorage.getItem("telegram_user_id");
-    return id || "0";
+    return id || "12345678";
   }
 
   private buildUrl(endpoint: string, params?: Record<string, string | number | boolean>): string {
