@@ -6,11 +6,14 @@ import {
   useDeleteWateringEvent,
   useFertilizerPlan,
   useFertilizers,
+  useStageTargets,
+  useCreateMeasurement,
   useToast,
 } from "../hooks";
 import { ToastContainer, ConfirmDialog } from "./Modals";
 import { Chevron } from "./Collapsible";
-import { IndoorDetail, Plant, IndoorWateringEvent } from "../api/types";
+import { ReadingCard, rangeStatus, CardSpec } from "./Readings";
+import { IndoorDetail, Plant, IndoorWateringEvent, MeasurementCreate } from "../api/types";
 
 const ACCENT = "#7CE38B";
 const AMBER = "#FFB000";
@@ -181,11 +184,73 @@ interface RiegoPanelProps {
 export function RiegoPanel({ indoor, plants, onUpdated }: RiegoPanelProps) {
   const { data: history, loading, refetch } = useIndoorWateringHistory(indoor.id);
   const { deleteWateringEvent } = useDeleteWateringEvent();
+  const { data: targets } = useStageTargets(indoor.id);
+  const { createMeasurement } = useCreateMeasurement();
   const { toasts, showToast, removeToast } = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [open, setOpen] = useState(true);
   const [editEvent, setEditEvent] = useState<IndoorWateringEvent | null>(null);
   const [deleteEvent, setDeleteEvent] = useState<IndoorWateringEvent | null>(null);
+  const [savingField, setSavingField] = useState<string | null>(null);
+
+  const env = indoor.current_environment;
+  const target = targets?.find((t) => t.stage === indoor.stage) ?? null;
+
+  const saveReading = async (field: string, value: number | null) => {
+    if (value == null) return;
+    setSavingField(field);
+    try {
+      await createMeasurement(indoor.id, { [field]: value } as MeasurementCreate);
+      showToast("Lectura guardada", "success");
+      onUpdated();
+    } catch {
+      showToast("Error al guardar la lectura", "error");
+    } finally {
+      setSavingField(null);
+    }
+  };
+
+  const waterCards: CardSpec[] = [
+    {
+      key: "ec",
+      label: "EC",
+      value: env?.ec?.value ?? null,
+      at: env?.ec?.at,
+      source: env?.ec?.source,
+      min: target?.ec_min,
+      max: target?.ec_max,
+      unit: "mS/cm",
+      step: "0.01",
+      digits: 2,
+      save: (v) => saveReading("ec", v),
+    },
+    {
+      key: "ph",
+      label: "pH",
+      value: env?.ph?.value ?? null,
+      at: env?.ph?.at,
+      source: env?.ph?.source,
+      min: target?.ph_min,
+      max: target?.ph_max,
+      unit: "",
+      step: "0.01",
+      digits: 2,
+      save: (v) => saveReading("ph", v),
+    },
+    {
+      key: "runoff_ec",
+      label: "EC runoff",
+      value: env?.runoff_ec?.value ?? null,
+      at: env?.runoff_ec?.at,
+      source: env?.runoff_ec?.source,
+      min: null,
+      max: null,
+      unit: "",
+      step: "0.01",
+      digits: 2,
+      save: (v) => saveReading("runoff_ec", v),
+    },
+  ];
 
   const chartData = useMemo(
     () => aggregateByDay(history ?? [], 14),
@@ -242,7 +307,7 @@ export function RiegoPanel({ indoor, plants, onUpdated }: RiegoPanelProps) {
           className="flex items-center gap-2 text-left"
         >
           <Chevron open={open} />
-          <h3 className="section-title text-lg font-semibold text-gray-800">Riego</h3>
+          <h3 className="section-title text-lg font-semibold text-gray-800">Agua & Riego</h3>
         </button>
         <button
           onClick={() => setModalOpen(true)}
@@ -255,6 +320,26 @@ export function RiegoPanel({ indoor, plants, onUpdated }: RiegoPanelProps) {
 
       {open && (
         <>
+          <div className="grid grid-cols-3 gap-3 mb-5">
+            {waterCards.map((card) => (
+              <ReadingCard
+                key={card.key}
+                label={card.label}
+                value={card.value}
+                at={card.at}
+                source={card.source}
+                min={card.min}
+                max={card.max}
+                unit={card.unit}
+                step={card.step}
+                digits={card.digits}
+                status={rangeStatus(card.value, card.min, card.max)}
+                saving={savingField === card.key}
+                onSave={card.save}
+              />
+            ))}
+          </div>
+
           <div className="grid grid-cols-3 gap-4 mb-5">
             <div className="bg-gray-50 rounded-sm p-3">
               <p className="text-[10px] uppercase tracking-widest text-gray-500">Último riego</p>
@@ -277,41 +362,63 @@ export function RiegoPanel({ indoor, plants, onUpdated }: RiegoPanelProps) {
               <WateringChart data={chartData} />
               <div className="mt-4">
                 <p className="text-[10px] uppercase tracking-widest text-gray-500 mb-2">
-                  Últimos riegos
+                  Cuadro de riegos
                 </p>
-                <div className="space-y-1 max-h-48 overflow-auto">
-                  {history.slice(0, 12).map((h) => (
-                    <div
-                      key={h.group_id}
-                      className="flex items-center justify-between gap-2 text-sm bg-gray-50 rounded-sm px-3 py-2"
-                    >
-                      <span className="text-gray-800 min-w-0 truncate">
-                        <span className="text-blue-500">
-                          {h.plants.map((p) => p.name).join(", ")}
-                        </span>
-                        <span className="text-gray-500">
-                          {" "}· {h.liters} L
-                          {h.plants.length > 1 ? ` c/u (${(h.liters * h.plants.length).toFixed(1)} L total)` : ""}
-                        </span>
-                        {h.ec != null && <span className="text-gray-500"> · EC {h.ec}</span>}
-                      </span>
-                      <span className="flex items-center gap-2 shrink-0">
-                        <span className="text-gray-500 text-xs">{fmtDateTime(h.event_ts)}</span>
-                        <button
-                          onClick={() => setEditEvent(h)}
-                          className="text-blue-500 hover:text-blue-700 text-xs"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => setDeleteEvent(h)}
-                          className="text-red-500 hover:text-red-700 text-xs"
-                        >
-                          ✕
-                        </button>
-                      </span>
-                    </div>
-                  ))}
+                <div className="overflow-x-auto overflow-y-auto max-h-72 border border-gray-200 rounded-sm">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100 border-b">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Fecha</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Plantas</th>
+                        <th className="px-3 py-2 text-right font-semibold text-gray-700">Litros</th>
+                        <th className="px-3 py-2 text-right font-semibold text-gray-700">EC</th>
+                        <th className="px-3 py-2 text-right font-semibold text-gray-700">pH</th>
+                        <th className="px-3 py-2 text-right font-semibold text-gray-700">Runoff</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Nota</th>
+                        <th className="px-3 py-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {history.slice(0, 50).map((h) => (
+                        <tr key={h.group_id} className="border-b hover:bg-gray-50">
+                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
+                            {fmtDateTime(h.event_ts)}
+                          </td>
+                          <td className="px-3 py-2 text-blue-500">
+                            {h.plants.map((p) => p.name).join(", ")}
+                          </td>
+                          <td className="px-3 py-2 text-right text-gray-600 whitespace-nowrap">
+                            {h.liters}
+                            {h.plants.length > 1
+                              ? ` (${(h.liters * h.plants.length).toFixed(1)} tot)`
+                              : ""}
+                          </td>
+                          <td className="px-3 py-2 text-right text-gray-600">{h.ec ?? "—"}</td>
+                          <td className="px-3 py-2 text-right text-gray-600">{h.ph ?? "—"}</td>
+                          <td className="px-3 py-2 text-right text-gray-600">
+                            {h.runoff_ec ?? "—"}
+                          </td>
+                          <td className="px-3 py-2 text-gray-500 max-w-[12rem] truncate">
+                            {h.note || "—"}
+                          </td>
+                          <td className="px-3 py-2 text-right whitespace-nowrap">
+                            <button
+                              onClick={() => setEditEvent(h)}
+                              className="text-blue-500 hover:text-blue-700 text-xs"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              onClick={() => setDeleteEvent(h)}
+                              className="text-red-500 hover:text-red-700 text-xs ml-3"
+                            >
+                              ✕
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </>

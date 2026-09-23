@@ -196,19 +196,31 @@ export default function IndoorDetail() {
         <StagePanel indoor={data.indoor} onUpdated={refetch} />
       </div>
 
-      {/* ===================== ZONA 1: PANEL VIVO ===================== */}
-      <ZoneLabel>Panel vivo</ZoneLabel>
+      {/* ===================== ZONA 1: AGUA & RIEGO ===================== */}
+      <ZoneLabel>Agua & Riego</ZoneLabel>
 
-      {/* Ambiente (panel de indicadores) */}
+      <div className="mb-8">
+        <RiegoPanel indoor={data.indoor} plants={data.plants} onUpdated={refetch} />
+      </div>
+
+      <div className="mb-8">
+        <FertilizersPanel indoorId={data.indoor.id} currentStage={data.indoor.stage} />
+      </div>
+
+      {/* ===================== ZONA 2: DISPOSITIVOS & AMBIENTE ===================== */}
+      <ZoneLabel>Dispositivos & Ambiente</ZoneLabel>
+
       <div className="mb-8">
         <AmbientePanel indoor={data.indoor} onUpdated={refetch} />
       </div>
 
-      {/* Riego + Mediciones (50/50) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start mb-8">
-        <RiegoPanel indoor={data.indoor} plants={data.plants} onUpdated={refetch} />
         <MeasurementsPanel indoorId={data.indoor.id} />
+        <DevicesPanel indoorId={data.indoor.id} />
       </div>
+
+      {/* ===================== ZONA 3: DETALLE ===================== */}
+      <ZoneLabel>Detalle</ZoneLabel>
 
       {/* Historial */}
       <div className="mb-10">
@@ -257,9 +269,6 @@ export default function IndoorDetail() {
           )}
         </CollapsiblePanel>
       </div>
-
-      {/* ===================== ZONA 2: DETALLE ===================== */}
-      <ZoneLabel>Detalle</ZoneLabel>
 
       {/* Plantas */}
       <div className="mb-8">
@@ -334,20 +343,14 @@ export default function IndoorDetail() {
         </CollapsiblePanel>
       </div>
 
-      {/* Fertilizantes + Checklist */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 items-start">
-        <FertilizersPanel indoorId={data.indoor.id} currentStage={data.indoor.stage} />
+      {/* Checklist */}
+      <div className="mb-8">
         <ChecklistPanel indoorId={data.indoor.id} currentStage={data.indoor.stage} />
       </div>
 
       {/* Objetivos por etapa */}
       <div className="mb-8">
         <StageTargetsPanel indoorId={data.indoor.id} currentStage={data.indoor.stage} />
-      </div>
-
-      {/* Dispositivos (Raspberry Pi) */}
-      <div className="mb-8">
-        <DevicesPanel indoorId={data.indoor.id} />
       </div>
 
       {/* Water Modal */}

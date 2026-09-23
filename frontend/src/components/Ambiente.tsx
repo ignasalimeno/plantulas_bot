@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
   useStageTargets,
   useUpdateIndoor,
@@ -7,89 +7,10 @@ import {
 } from "../hooks";
 import { ToastContainer } from "./Modals";
 import { Chevron } from "./Collapsible";
+import { ReadingCard, rangeStatus, CardSpec, Status } from "./Readings";
 import { IndoorDetail, IndoorUpdateRequest, MeasurementCreate } from "../api/types";
 
-type Status = "ok" | "low" | "high" | "none";
-
 type AmbienteForm = IndoorUpdateRequest;
-
-type CardSpec = {
-  key: string;
-  label: string;
-  value: number | null;
-  at?: string | null;
-  source?: string | null;
-  min?: number | null;
-  max?: number | null;
-  unit?: string;
-  step: string;
-  digits: number;
-  save: (value: number | null) => void;
-};
-
-const STATUS_STYLES: Record<Status, { card: string; value: string; badge: string; label: string }> = {
-  ok: {
-    card: "border-blue-500 bg-blue-50",
-    value: "text-blue-500",
-    badge: "bg-blue-100 text-blue-800",
-    label: "OK",
-  },
-  low: {
-    card: "border-yellow-500 bg-yellow-50",
-    value: "text-yellow-800",
-    badge: "bg-yellow-100 text-yellow-800",
-    label: "BAJO",
-  },
-  high: {
-    card: "border-red-400 bg-red-50",
-    value: "text-red-700",
-    badge: "bg-red-100 text-red-800",
-    label: "ALTO",
-  },
-  none: {
-    card: "border-gray-200 bg-gray-50",
-    value: "text-gray-500",
-    badge: "bg-gray-100 text-gray-600",
-    label: "—",
-  },
-};
-
-function rangeStatus(
-  value: number | null | undefined,
-  min: number | null | undefined,
-  max: number | null | undefined
-): Status {
-  if (value === null || value === undefined || min === null || min === undefined || max === null || max === undefined) {
-    return "none";
-  }
-  if (value < min) return "low";
-  if (value > max) return "high";
-  return "ok";
-}
-
-function fmtNum(value: number | null | undefined, digits = 1) {
-  if (value === null || value === undefined) return "—";
-  return Number(value).toFixed(digits).replace(/\.0+$/, "");
-}
-
-function timeAgo(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  const diff = Date.now() - new Date(iso).getTime();
-  if (diff < 0) return "ahora";
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return "ahora";
-  if (min < 60) return `hace ${min} min`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `hace ${h} h`;
-  const d = Math.floor(h / 24);
-  return `hace ${d} d`;
-}
-
-const SOURCE_LABELS: Record<string, string> = {
-  measurement: "medición",
-  watering: "riego",
-  indoor: "manual",
-};
 
 type HumidifierRecommendation = "on" | "off" | null;
 
@@ -134,130 +55,6 @@ function humidifierRecommendation(
     return "on";
   }
   return null;
-}
-
-function ReadingCard({
-  label,
-  value,
-  at,
-  source,
-  min,
-  max,
-  unit,
-  step = "0.1",
-  digits = 1,
-  status,
-  saving,
-  onSave,
-}: {
-  label: string;
-  value: number | null;
-  at?: string | null;
-  source?: string | null;
-  min?: number | null;
-  max?: number | null;
-  unit?: string;
-  step?: string;
-  digits?: number;
-  status: Status;
-  saving?: boolean;
-  onSave: (value: number | null) => void;
-}) {
-  const s = STATUS_STYLES[status];
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-  const doneRef = useRef(false);
-
-  const startEdit = () => {
-    setDraft(value != null ? String(value) : "");
-    doneRef.current = false;
-    setEditing(true);
-  };
-
-  const finish = (save: boolean) => {
-    if (doneRef.current) return;
-    doneRef.current = true;
-    setEditing(false);
-    if (!save) return;
-    const trimmed = draft.trim();
-    if (trimmed === "") return;
-    const num = Number(trimmed);
-    if (Number.isNaN(num)) return;
-    if (value != null && Number(value) === num) return;
-    onSave(num);
-  };
-
-  const recency = timeAgo(at);
-  const sourceLabel = source ? SOURCE_LABELS[source] ?? source : null;
-
-  return (
-    <div className={`border rounded-sm p-3 ${s.card}`}>
-      <div className="flex items-center justify-between">
-        <p className="text-[10px] uppercase tracking-widest text-gray-500">{label}</p>
-        <div className="flex items-center gap-1.5">
-          <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-semibold ${s.badge}`}>
-            {s.label}
-          </span>
-          {!editing && (
-            <button
-              onClick={startEdit}
-              title="Editar"
-              className="text-gray-400 hover:text-blue-500 text-xs leading-none"
-            >
-              ✎
-            </button>
-          )}
-        </div>
-      </div>
-
-      {editing ? (
-        <input
-          autoFocus
-          type="number"
-          step={step}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => finish(true)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              finish(true);
-            }
-            if (e.key === "Escape") {
-              e.preventDefault();
-              finish(false);
-            }
-          }}
-          disabled={saving}
-          className="w-full mt-2 px-2 py-1 bg-white border border-blue-400 rounded-sm text-xl font-bold text-gray-800 focus:outline-none"
-        />
-      ) : (
-        <button onClick={startEdit} className="block w-full text-left" title="Click para editar">
-          <p className={`text-2xl font-bold leading-none mt-2 ${s.value}`}>
-            {fmtNum(value, digits)}
-          </p>
-        </button>
-      )}
-
-      <div className="flex items-center justify-between mt-1 min-h-[14px]">
-        {min != null || max != null ? (
-          <p className="text-[10px] uppercase tracking-widest text-gray-500">
-            ideal {fmtNum(min)}–{fmtNum(max)}
-            {unit ? ` ${unit}` : ""}
-          </p>
-        ) : (
-          <span />
-        )}
-        {(sourceLabel || recency) && (
-          <span className="text-[10px] text-gray-400">
-            {sourceLabel}
-            {sourceLabel && recency ? " · " : ""}
-            {recency}
-          </span>
-        )}
-      </div>
-    </div>
-  );
 }
 
 export function AmbientePanel({
@@ -366,32 +163,6 @@ export function AmbientePanel({
 
   const readingCards: CardSpec[] = [
     {
-      key: "ec",
-      label: "EC",
-      value: env?.ec?.value ?? null,
-      at: env?.ec?.at,
-      source: env?.ec?.source,
-      min: target?.ec_min,
-      max: target?.ec_max,
-      unit: "mS/cm",
-      step: "0.01",
-      digits: 2,
-      save: (v: number | null) => saveReading("ec", v),
-    },
-    {
-      key: "ph",
-      label: "pH",
-      value: env?.ph?.value ?? null,
-      at: env?.ph?.at,
-      source: env?.ph?.source,
-      min: target?.ph_min,
-      max: target?.ph_max,
-      unit: "",
-      step: "0.01",
-      digits: 2,
-      save: (v: number | null) => saveReading("ph", v),
-    },
-    {
       key: "temp_c",
       label: "Temperatura",
       value: env?.temp_c?.value ?? null,
@@ -402,7 +173,7 @@ export function AmbientePanel({
       unit: "°C",
       step: "0.1",
       digits: 1,
-      save: (v: number | null) => saveReading("temp_c", v),
+      save: (v) => saveReading("temp_c", v),
     },
     {
       key: "humidity",
@@ -415,20 +186,7 @@ export function AmbientePanel({
       unit: "%",
       step: "1",
       digits: 0,
-      save: (v: number | null) => saveReading("humidity", v),
-    },
-    {
-      key: "runoff_ec",
-      label: "EC runoff",
-      value: env?.runoff_ec?.value ?? null,
-      at: env?.runoff_ec?.at,
-      source: env?.runoff_ec?.source,
-      min: null,
-      max: null,
-      unit: "",
-      step: "0.01",
-      digits: 2,
-      save: (v: number | null) => saveReading("runoff_ec", v),
+      save: (v) => saveReading("humidity", v),
     },
     {
       key: "ppfd",
@@ -441,7 +199,7 @@ export function AmbientePanel({
       unit: "",
       step: "1",
       digits: 0,
-      save: (v: number | null) => saveReading("ppfd", v),
+      save: (v) => saveReading("ppfd", v),
     },
     {
       key: "light_height_cm",
@@ -452,7 +210,7 @@ export function AmbientePanel({
       unit: "cm",
       step: "1",
       digits: 0,
-      save: (v: number | null) => saveSetting("light_height_cm", v),
+      save: (v) => saveSetting("light_height_cm", v),
     },
     {
       key: "light_power_pct",
@@ -463,7 +221,7 @@ export function AmbientePanel({
       unit: "%",
       step: "1",
       digits: 0,
-      save: (v: number | null) => saveSetting("light_power_pct", v),
+      save: (v) => saveSetting("light_power_pct", v),
     },
   ];
 
@@ -487,7 +245,9 @@ export function AmbientePanel({
           className="flex items-center gap-2 text-left"
         >
           <Chevron open={open} />
-          <h3 className="section-title text-lg font-semibold text-gray-800">Ambiente</h3>
+          <h3 className="section-title text-lg font-semibold text-gray-800">
+            Dispositivos & Ambiente
+          </h3>
         </button>
         {editMode ? (
           <div className="flex gap-2">
