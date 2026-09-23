@@ -29,6 +29,7 @@ from app.services.indoor_service import (
     seed_indoor_defaults,
     register_indoor_watering,
 )
+from app.services.environment_service import compute_current_environment
 from app.services.plant_service import recompute_plant_watering
 from app.stages import DEFAULT_STAGE, STAGE_KEYS
 from app.timeutils import now
@@ -223,6 +224,7 @@ async def get_indoor_detail(
         light_schedule=indoor.light_schedule,
         stage=indoor.stage,
         stage_started_at=indoor.stage_started_at,
+        current_environment=compute_current_environment(db, indoor),
     )
     
     return IndoorDetailResponse(
@@ -314,6 +316,7 @@ async def update_indoor_detail(
         light_schedule=updated_indoor.light_schedule,
         stage=updated_indoor.stage,
         stage_started_at=updated_indoor.stage_started_at,
+        current_environment=compute_current_environment(db, updated_indoor),
     )
 
 

@@ -66,6 +66,24 @@ class PlantInIndoor(BaseModel):
         from_attributes = True
 
 
+class CurrentReading(BaseModel):
+    value: Optional[float] = None
+    at: Optional[datetime] = None
+    source: Optional[str] = None
+
+
+class CurrentEnvironment(BaseModel):
+    temp_c: CurrentReading
+    humidity: CurrentReading
+    ec: CurrentReading
+    ph: CurrentReading
+    runoff_ec: CurrentReading
+    ppfd: CurrentReading
+    light_height_cm: Optional[float] = None
+    light_power_pct: Optional[int] = None
+    light_schedule: Optional[str] = None
+
+
 class IndoorDetail(BaseModel):
     id: UUID
     name: str
@@ -91,6 +109,7 @@ class IndoorDetail(BaseModel):
     light_schedule: Optional[str]
     stage: str
     stage_started_at: Optional[date]
+    current_environment: Optional[CurrentEnvironment] = None
 
     class Config:
         from_attributes = True

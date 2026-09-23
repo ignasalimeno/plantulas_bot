@@ -47,6 +47,24 @@ export interface IndoorDetailResponse {
   history: IndoorHistory[];
 }
 
+export interface CurrentReading {
+  value: number | null;
+  at: string | null;
+  source: string | null; // "measurement" | "watering" | "indoor"
+}
+
+export interface CurrentEnvironment {
+  temp_c: CurrentReading;
+  humidity: CurrentReading;
+  ec: CurrentReading;
+  ph: CurrentReading;
+  runoff_ec: CurrentReading;
+  ppfd: CurrentReading;
+  light_height_cm: number | null;
+  light_power_pct: number | null;
+  light_schedule: string | null;
+}
+
 export interface IndoorDetail {
   id: string;
   name: string;
@@ -72,6 +90,7 @@ export interface IndoorDetail {
   light_schedule: string | null;
   stage: string;
   stage_started_at: string | null;
+  current_environment?: CurrentEnvironment | null;
 }
 
 export interface WateringHistory {

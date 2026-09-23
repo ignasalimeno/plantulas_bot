@@ -25,6 +25,7 @@ from app.models import (
 )
 from app.stages import stage_label, STAGE_KEYS
 from app.services.indoor_service import register_indoor_watering, update_indoor
+from app.services.environment_service import compute_current_environment
 from app.timeutils import now
 
 READ_TOOLS = {
@@ -304,45 +305,20 @@ def _resolve_indoor(db: Session, user: User, indoor_id: str | None, indoor_name:
 def _current_env(db: Session, indoor: Indoor) -> dict:
     """Best-known current environment for an indoor.
 
-    For every measurement field we take the most recent Measurement that
-    actually has a value (so a PPFD-only reading does not mask an older
-    temperature). Temperature and humidity fall back to the values stored
-    on the indoor (the ones edited from the Ambiente panel).
+    Delegates to the shared helper so the chatbot, the API and the UI always
+    agree. Returns a flat dict (value only) for prompt building.
     """
-
-    def latest(field: str) -> Measurement | None:
-        column = getattr(Measurement, field)
-        return (
-            db.query(Measurement)
-            .filter(Measurement.indoor_id == indoor.id, column.isnot(None))
-            .order_by(Measurement.event_ts.desc())
-            .first()
-        )
-
-    temp_row = latest("temp_c")
-    humidity_row = latest("humidity")
-    ec_row = latest("ec")
-    ph_row = latest("ph")
-    runoff_row = latest("runoff_ec")
-    ppfd_row = latest("ppfd")
-
-    temp_c = temp_row.temp_c if temp_row else None
-    if temp_c is None:
-        temp_c = indoor.temp_c
-    humidity = humidity_row.humidity if humidity_row else None
-    if humidity is None:
-        humidity = indoor.humidity
-
+    env = compute_current_environment(db, indoor)
     return {
-        "temp_c": _num(temp_c),
-        "humidity": _num(humidity),
-        "ec": _num(ec_row.ec) if ec_row else None,
-        "ph": _num(ph_row.ph) if ph_row else None,
-        "runoff_ec": _num(runoff_row.runoff_ec) if runoff_row else None,
-        "ppfd": ppfd_row.ppfd if ppfd_row else None,
-        "light_height_cm": _num(indoor.light_height_cm),
-        "light_power_pct": indoor.light_power_pct,
-        "light_schedule": indoor.light_schedule,
+        "temp_c": env["temp_c"]["value"],
+        "humidity": env["humidity"]["value"],
+        "ec": env["ec"]["value"],
+        "ph": env["ph"]["value"],
+        "runoff_ec": env["runoff_ec"]["value"],
+        "ppfd": env["ppfd"]["value"],
+        "light_height_cm": env["light_height_cm"],
+        "light_power_pct": env["light_power_pct"],
+        "light_schedule": env["light_schedule"],
     }
 
 

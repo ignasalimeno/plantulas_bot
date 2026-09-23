@@ -1,6 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
-  useMeasurements,
   useStageTargets,
   useUpdateIndoor,
   useCreateMeasurement,
@@ -8,11 +7,25 @@ import {
 } from "../hooks";
 import { ToastContainer } from "./Modals";
 import { Chevron } from "./Collapsible";
-import { IndoorDetail, IndoorUpdateRequest } from "../api/types";
+import { IndoorDetail, IndoorUpdateRequest, MeasurementCreate } from "../api/types";
 
 type Status = "ok" | "low" | "high" | "none";
 
-type AmbienteForm = IndoorUpdateRequest & { ppfd?: number | null };
+type AmbienteForm = IndoorUpdateRequest;
+
+type CardSpec = {
+  key: string;
+  label: string;
+  value: number | null;
+  at?: string | null;
+  source?: string | null;
+  min?: number | null;
+  max?: number | null;
+  unit?: string;
+  step: string;
+  digits: number;
+  save: (value: number | null) => void;
+};
 
 const STATUS_STYLES: Record<Status, { card: string; value: string; badge: string; label: string }> = {
   ok: {
@@ -59,6 +72,25 @@ function fmtNum(value: number | null | undefined, digits = 1) {
   return Number(value).toFixed(digits).replace(/\.0+$/, "");
 }
 
+function timeAgo(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 0) return "ahora";
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "ahora";
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `hace ${h} h`;
+  const d = Math.floor(h / 24);
+  return `hace ${d} d`;
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  measurement: "medición",
+  watering: "riego",
+  indoor: "manual",
+};
+
 type HumidifierRecommendation = "on" | "off" | null;
 
 function humidifierRecommendation(
@@ -104,37 +136,126 @@ function humidifierRecommendation(
   return null;
 }
 
-function IndicatorCard({
+function ReadingCard({
   label,
   value,
+  at,
+  source,
   min,
   max,
   unit,
+  step = "0.1",
+  digits = 1,
   status,
+  saving,
+  onSave,
 }: {
   label: string;
-  value: string;
-  min: number | null | undefined;
-  max: number | null | undefined;
+  value: number | null;
+  at?: string | null;
+  source?: string | null;
+  min?: number | null;
+  max?: number | null;
   unit?: string;
+  step?: string;
+  digits?: number;
   status: Status;
+  saving?: boolean;
+  onSave: (value: number | null) => void;
 }) {
   const s = STATUS_STYLES[status];
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const doneRef = useRef(false);
+
+  const startEdit = () => {
+    setDraft(value != null ? String(value) : "");
+    doneRef.current = false;
+    setEditing(true);
+  };
+
+  const finish = (save: boolean) => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    setEditing(false);
+    if (!save) return;
+    const trimmed = draft.trim();
+    if (trimmed === "") return;
+    const num = Number(trimmed);
+    if (Number.isNaN(num)) return;
+    if (value != null && Number(value) === num) return;
+    onSave(num);
+  };
+
+  const recency = timeAgo(at);
+  const sourceLabel = source ? SOURCE_LABELS[source] ?? source : null;
+
   return (
     <div className={`border rounded-sm p-3 ${s.card}`}>
       <div className="flex items-center justify-between">
         <p className="text-[10px] uppercase tracking-widest text-gray-500">{label}</p>
-        <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-semibold ${s.badge}`}>
-          {s.label}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-semibold ${s.badge}`}>
+            {s.label}
+          </span>
+          {!editing && (
+            <button
+              onClick={startEdit}
+              title="Editar"
+              className="text-gray-400 hover:text-blue-500 text-xs leading-none"
+            >
+              ✎
+            </button>
+          )}
+        </div>
       </div>
-      <p className={`text-2xl font-bold leading-none mt-2 ${s.value}`}>{value}</p>
-      {(min != null || max != null) && (
-        <p className="text-[10px] uppercase tracking-widest text-gray-500 mt-1">
-          ideal {fmtNum(min)}–{fmtNum(max)}
-          {unit ? ` ${unit}` : ""}
-        </p>
+
+      {editing ? (
+        <input
+          autoFocus
+          type="number"
+          step={step}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => finish(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              finish(true);
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              finish(false);
+            }
+          }}
+          disabled={saving}
+          className="w-full mt-2 px-2 py-1 bg-white border border-blue-400 rounded-sm text-xl font-bold text-gray-800 focus:outline-none"
+        />
+      ) : (
+        <button onClick={startEdit} className="block w-full text-left" title="Click para editar">
+          <p className={`text-2xl font-bold leading-none mt-2 ${s.value}`}>
+            {fmtNum(value, digits)}
+          </p>
+        </button>
       )}
+
+      <div className="flex items-center justify-between mt-1 min-h-[14px]">
+        {min != null || max != null ? (
+          <p className="text-[10px] uppercase tracking-widest text-gray-500">
+            ideal {fmtNum(min)}–{fmtNum(max)}
+            {unit ? ` ${unit}` : ""}
+          </p>
+        ) : (
+          <span />
+        )}
+        {(sourceLabel || recency) && (
+          <span className="text-[10px] text-gray-400">
+            {sourceLabel}
+            {sourceLabel && recency ? " · " : ""}
+            {recency}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -146,7 +267,6 @@ export function AmbientePanel({
   indoor: IndoorDetail;
   onUpdated: () => void;
 }) {
-  const { data: measurements, refetch: refetchMeasurements } = useMeasurements(indoor.id);
   const { data: targets } = useStageTargets(indoor.id);
   const { updateIndoor, loading: saving } = useUpdateIndoor();
   const { createMeasurement } = useCreateMeasurement();
@@ -155,10 +275,9 @@ export function AmbientePanel({
   const [open, setOpen] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState<AmbienteForm>({});
+  const [savingField, setSavingField] = useState<string | null>(null);
 
-  const latest =
-    measurements?.find((m) => m.temp_c != null || m.humidity != null) ?? null;
-  const latestPpfd = measurements?.find((m) => m.ppfd != null) ?? null;
+  const env = indoor.current_environment;
   const target = targets?.find((t) => t.stage === indoor.stage) ?? null;
 
   const handleChange = (field: keyof AmbienteForm, value: any) => {
@@ -167,18 +286,41 @@ export function AmbientePanel({
 
   const handleSave = async () => {
     try {
-      const { ppfd, ...indoorUpdates } = formData;
-      await updateIndoor(indoor.id, indoorUpdates);
-      if (ppfd != null && ppfd !== latestPpfd?.ppfd) {
-        await createMeasurement(indoor.id, { ppfd });
-        refetchMeasurements();
-      }
+      await updateIndoor(indoor.id, formData);
       showToast("Ambiente guardado", "success");
       setEditMode(false);
       setFormData({});
       onUpdated();
     } catch {
       showToast("Error al guardar", "error");
+    }
+  };
+
+  const saveReading = async (field: string, value: number | null) => {
+    if (value == null) return;
+    setSavingField(field);
+    try {
+      await createMeasurement(indoor.id, { [field]: value } as MeasurementCreate);
+      showToast("Lectura guardada", "success");
+      onUpdated();
+    } catch {
+      showToast("Error al guardar la lectura", "error");
+    } finally {
+      setSavingField(null);
+    }
+  };
+
+  const saveSetting = async (field: keyof IndoorUpdateRequest, value: number | null) => {
+    if (value == null) return;
+    setSavingField(field);
+    try {
+      await updateIndoor(indoor.id, { [field]: value } as IndoorUpdateRequest);
+      showToast("Guardado", "success");
+      onUpdated();
+    } catch {
+      showToast("Error al guardar", "error");
+    } finally {
+      setSavingField(null);
     }
   };
 
@@ -209,8 +351,8 @@ export function AmbientePanel({
     }
   };
 
-  const tempValue = latest?.temp_c ?? indoor.temp_c;
-  const humidityValue = latest?.humidity ?? indoor.humidity;
+  const tempValue = env?.temp_c?.value ?? indoor.temp_c;
+  const humidityValue = env?.humidity?.value ?? indoor.humidity;
   const recommendation = humidifierRecommendation(indoor, tempValue, humidityValue);
 
   const acRecommendation: "on" | "off" | null =
@@ -222,62 +364,106 @@ export function AmbientePanel({
       ? "off"
       : null;
 
-  const indicators = [
+  const readingCards: CardSpec[] = [
     {
+      key: "ec",
       label: "EC",
-      value: fmtNum(latest?.ec, 2),
+      value: env?.ec?.value ?? null,
+      at: env?.ec?.at,
+      source: env?.ec?.source,
       min: target?.ec_min,
       max: target?.ec_max,
       unit: "mS/cm",
-      status: rangeStatus(latest?.ec, target?.ec_min, target?.ec_max),
+      step: "0.01",
+      digits: 2,
+      save: (v: number | null) => saveReading("ec", v),
     },
     {
+      key: "ph",
       label: "pH",
-      value: fmtNum(latest?.ph, 2),
+      value: env?.ph?.value ?? null,
+      at: env?.ph?.at,
+      source: env?.ph?.source,
       min: target?.ph_min,
       max: target?.ph_max,
       unit: "",
-      status: rangeStatus(latest?.ph, target?.ph_min, target?.ph_max),
+      step: "0.01",
+      digits: 2,
+      save: (v: number | null) => saveReading("ph", v),
     },
     {
+      key: "temp_c",
       label: "Temperatura",
-      value: fmtNum(tempValue, 1),
+      value: env?.temp_c?.value ?? null,
+      at: env?.temp_c?.at,
+      source: env?.temp_c?.source,
       min: target?.temp_min,
       max: target?.temp_max,
       unit: "°C",
-      status: rangeStatus(tempValue, target?.temp_min, target?.temp_max),
+      step: "0.1",
+      digits: 1,
+      save: (v: number | null) => saveReading("temp_c", v),
     },
     {
+      key: "humidity",
       label: "Humedad",
-      value: fmtNum(humidityValue, 0),
+      value: env?.humidity?.value ?? null,
+      at: env?.humidity?.at,
+      source: env?.humidity?.source,
       min: target?.humidity_min,
       max: target?.humidity_max,
       unit: "%",
-      status: rangeStatus(humidityValue, target?.humidity_min, target?.humidity_max),
+      step: "1",
+      digits: 0,
+      save: (v: number | null) => saveReading("humidity", v),
     },
     {
-      label: "Altura luz",
-      value: fmtNum(indoor.light_height_cm, 0),
-      min: target?.light_height_min,
-      max: target?.light_height_max,
-      unit: "cm",
-      status: rangeStatus(indoor.light_height_cm, target?.light_height_min, target?.light_height_max),
-    },
-    {
-      label: "Potencia",
-      value: fmtNum(indoor.light_power_pct, 0),
+      key: "runoff_ec",
+      label: "EC runoff",
+      value: env?.runoff_ec?.value ?? null,
+      at: env?.runoff_ec?.at,
+      source: env?.runoff_ec?.source,
       min: null,
       max: null,
-      unit: "%",
-      status: "none" as Status,
+      unit: "",
+      step: "0.01",
+      digits: 2,
+      save: (v: number | null) => saveReading("runoff_ec", v),
     },
     {
+      key: "ppfd",
       label: "PPFD",
-      value: fmtNum(latestPpfd?.ppfd, 0),
+      value: env?.ppfd?.value ?? null,
+      at: env?.ppfd?.at,
+      source: env?.ppfd?.source,
       min: target?.ppfd_min,
       max: target?.ppfd_max,
       unit: "",
-      status: rangeStatus(latestPpfd?.ppfd, target?.ppfd_min, target?.ppfd_max),
+      step: "1",
+      digits: 0,
+      save: (v: number | null) => saveReading("ppfd", v),
+    },
+    {
+      key: "light_height_cm",
+      label: "Altura luz",
+      value: env?.light_height_cm ?? indoor.light_height_cm ?? null,
+      min: target?.light_height_min,
+      max: target?.light_height_max,
+      unit: "cm",
+      step: "1",
+      digits: 0,
+      save: (v: number | null) => saveSetting("light_height_cm", v),
+    },
+    {
+      key: "light_power_pct",
+      label: "Potencia",
+      value: env?.light_power_pct ?? indoor.light_power_pct ?? null,
+      min: null,
+      max: null,
+      unit: "%",
+      step: "1",
+      digits: 0,
+      save: (v: number | null) => saveSetting("light_power_pct", v),
     },
   ];
 
@@ -327,7 +513,7 @@ export function AmbientePanel({
             onClick={() => setEditMode(true)}
             className="px-3 py-1 text-xs uppercase tracking-wider border border-gray-300 text-gray-700 rounded-sm hover:bg-gray-100"
           >
-            Editar
+            Editar ajustes
           </button>
         )}
       </div>
@@ -336,32 +522,8 @@ export function AmbientePanel({
         (editMode ? (
           <div className="space-y-6">
             <div>
-              <p className="field-label">Ambiente</p>
+              <p className="field-label">Ventilación</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Temperatura (°C)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={formData.temp_c ?? indoor.temp_c ?? ""}
-                    onChange={(e) =>
-                      handleChange("temp_c", e.target.value ? parseFloat(e.target.value) : null)
-                    }
-                    className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Humedad (%)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={formData.humidity ?? indoor.humidity ?? ""}
-                    onChange={(e) =>
-                      handleChange("humidity", e.target.value ? parseFloat(e.target.value) : null)
-                    }
-                    className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Ubicación ventilador</label>
                   <input
@@ -371,42 +533,41 @@ export function AmbientePanel({
                     className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Ventilación</label>
-                  <div className="flex flex-col gap-1 text-sm text-gray-700">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={formData.extractor_top ?? indoor.extractor_top}
-                        onChange={(e) => handleChange("extractor_top", e.target.checked)}
-                      />
-                      Extractor arriba
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={formData.extractor_bottom ?? indoor.extractor_bottom}
-                        onChange={(e) => handleChange("extractor_bottom", e.target.checked)}
-                      />
-                      Extractor abajo
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={formData.fan ?? indoor.fan}
-                        onChange={(e) => handleChange("fan", e.target.checked)}
-                      />
-                      Ventilador
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={formData.humidifier ?? indoor.humidifier}
-                        onChange={(e) => handleChange("humidifier", e.target.checked)}
-                      />
-                      Humidificador
-                    </label>
-                  </div>
+                <div className="flex flex-col gap-1 text-sm text-gray-700">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.extractor_top ?? indoor.extractor_top}
+                      onChange={(e) => handleChange("extractor_top", e.target.checked)}
+                    />
+                    Extractor arriba
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.extractor_bottom ?? indoor.extractor_bottom}
+                      onChange={(e) => handleChange("extractor_bottom", e.target.checked)}
+                    />
+                    Extractor abajo
+                  </label>
+                </div>
+                <div className="flex flex-col gap-1 text-sm text-gray-700">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.fan ?? indoor.fan}
+                      onChange={(e) => handleChange("fan", e.target.checked)}
+                    />
+                    Ventilador
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.humidifier ?? indoor.humidifier}
+                      onChange={(e) => handleChange("humidifier", e.target.checked)}
+                    />
+                    Humidificador
+                  </label>
                 </div>
               </div>
             </div>
@@ -540,7 +701,7 @@ export function AmbientePanel({
 
             <div>
               <p className="field-label">Luz</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Altura (cm)</label>
                   <input
@@ -568,18 +729,6 @@ export function AmbientePanel({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">PPFD</label>
-                  <input
-                    type="number"
-                    step="1"
-                    value={formData.ppfd ?? latestPpfd?.ppfd ?? ""}
-                    onChange={(e) =>
-                      handleChange("ppfd", e.target.value ? parseInt(e.target.value) : null)
-                    }
-                    className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
                   <label className="block text-xs text-gray-500 mb-1">Horario</label>
                   <input
                     type="text"
@@ -595,9 +744,24 @@ export function AmbientePanel({
         ) : (
           <>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {indicators.map((ind) => (
-                <IndicatorCard key={ind.label} {...ind} />
+              {readingCards.map((card) => (
+                <ReadingCard
+                  key={card.key}
+                  label={card.label}
+                  value={card.value}
+                  at={card.at}
+                  source={card.source}
+                  min={card.min}
+                  max={card.max}
+                  unit={card.unit}
+                  step={card.step}
+                  digits={card.digits}
+                  status={rangeStatus(card.value, card.min, card.max)}
+                  saving={savingField === card.key}
+                  onSave={card.save}
+                />
               ))}
+
               <div
                 className={`border rounded-sm p-3 ${
                   scheduleStatus === "ok" ? "border-blue-500 bg-blue-50" : "border-gray-200 bg-gray-50"
@@ -702,12 +866,6 @@ export function AmbientePanel({
                 )}
               </div>
             </div>
-            {latest && (
-              <p className="text-[10px] uppercase tracking-widest text-gray-500 mt-3">
-                Basado en la última medición:{" "}
-                {new Date(latest.event_ts).toLocaleString("es-ES")}
-              </p>
-            )}
           </>
         ))}
     </div>
