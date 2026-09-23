@@ -326,7 +326,7 @@ export function RiegoPanel({ indoor, plants, onUpdated }: RiegoPanelProps) {
                 key={card.key}
                 label={card.label}
                 value={card.value}
-                at={card.at}
+                at={card.at ?? indoor.updated_at}
                 source={card.source}
                 min={card.min}
                 max={card.max}
@@ -343,7 +343,9 @@ export function RiegoPanel({ indoor, plants, onUpdated }: RiegoPanelProps) {
           <div className="grid grid-cols-3 gap-4 mb-5">
             <div className="bg-gray-50 rounded-sm p-3">
               <p className="text-[10px] uppercase tracking-widest text-gray-500">Último riego</p>
-              <p className="text-lg font-bold text-gray-800 mt-1">{fmtDate(lastWatering)}</p>
+              <p className="text-lg font-bold text-gray-800 mt-1">
+                {lastWatering ? fmtDateTime(lastWatering) : "—"}
+              </p>
             </div>
             <div className="bg-gray-50 rounded-sm p-3">
               <p className="text-[10px] uppercase tracking-widest text-gray-500">Próximo riego</p>
@@ -473,6 +475,7 @@ function WateringEventModal({
 }: WateringEventModalProps) {
   const { updateWateringEvent, loading, error } = useUpdateWateringEvent();
   const [liters, setLiters] = useState("");
+  const [unit, setUnit] = useState<"L" | "ml">("L");
   const [ec, setEc] = useState("");
   const [ph, setPh] = useState("");
   const [runoffEc, setRunoffEc] = useState("");
@@ -481,8 +484,17 @@ function WateringEventModal({
   const [selectedPlants, setSelectedPlants] = useState<string[]>([]);
   const [initializedFor, setInitializedFor] = useState<string | null>(null);
 
+  const switchUnit = (newUnit: "L" | "ml") => {
+    const num = parseFloat(liters);
+    if (!Number.isNaN(num)) {
+      setLiters(String(newUnit === "ml" ? num * 1000 : num / 1000));
+    }
+    setUnit(newUnit);
+  };
+
   if (isOpen && event && initializedFor !== event.group_id) {
     setLiters(String(event.liters));
+    setUnit("L");
     setEc(event.ec != null ? String(event.ec) : "");
     setPh(event.ph != null ? String(event.ph) : "");
     setRunoffEc(event.runoff_ec != null ? String(event.runoff_ec) : "");
@@ -507,8 +519,9 @@ function WateringEventModal({
       return;
     }
     try {
+      const raw = parseFloat(liters);
       await updateWateringEvent(event.group_id, {
-        liters: parseFloat(liters),
+        liters: unit === "ml" ? raw / 1000 : raw,
         ec: ec !== "" ? parseFloat(ec) : undefined,
         ph: ph !== "" ? parseFloat(ph) : undefined,
         runoff_ec: runoffEc !== "" ? parseFloat(runoffEc) : undefined,
@@ -538,16 +551,26 @@ function WateringEventModal({
         <form onSubmit={handleSubmit}>
           <div className="grid grid-cols-4 gap-3 mb-4">
             <div>
-              <label className="field-label">Litros *</label>
-              <input
-                type="number"
-                step="0.1"
-                min="0.1"
-                value={liters}
-                onChange={(e) => setLiters(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
-                required
-              />
+              <label className="field-label">Cantidad *</label>
+              <div className="flex gap-1">
+                <input
+                  type="number"
+                  step={unit === "ml" ? "1" : "0.1"}
+                  min={unit === "ml" ? "1" : "0.01"}
+                  value={liters}
+                  onChange={(e) => setLiters(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
+                  required
+                />
+                <select
+                  value={unit}
+                  onChange={(e) => switchUnit(e.target.value as "L" | "ml")}
+                  className="px-1 py-2 bg-gray-50 border border-gray-300 rounded-sm text-xs text-gray-700"
+                >
+                  <option value="L">L</option>
+                  <option value="ml">ml</option>
+                </select>
+              </div>
             </div>
             <div>
               <label className="field-label">EC</label>
@@ -671,6 +694,7 @@ function WaterIndoorModal({
   const { waterIndoor, loading, error } = useWaterIndoor();
 
   const [liters, setLiters] = useState("2");
+  const [unit, setUnit] = useState<"L" | "ml">("L");
   const [ec, setEc] = useState("");
   const [ph, setPh] = useState("");
   const [runoffEc, setRunoffEc] = useState("");
@@ -679,6 +703,14 @@ function WaterIndoorModal({
   const [selectedFerts, setSelectedFerts] = useState<Record<string, string>>({});
   const [soloAgua, setSoloAgua] = useState(false);
   const [initialized, setInitialized] = useState(false);
+
+  const switchUnit = (newUnit: "L" | "ml") => {
+    const num = parseFloat(liters);
+    if (!Number.isNaN(num)) {
+      setLiters(String(newUnit === "ml" ? num * 1000 : num / 1000));
+    }
+    setUnit(newUnit);
+  };
 
   if (isOpen && !initialized) {
     setSelectedPlants(plants.map((p) => p.id));
@@ -725,9 +757,10 @@ function WaterIndoorModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const litersNum = parseFloat(liters);
+    const raw = parseFloat(liters);
+    const litersNum = unit === "ml" ? raw / 1000 : raw;
     if (!litersNum || litersNum <= 0) {
-      alert("Ingresá una cantidad válida de litros");
+      alert("Ingresá una cantidad válida");
       return;
     }
     if (selectedPlants.length === 0) {
@@ -782,16 +815,26 @@ function WaterIndoorModal({
         <form onSubmit={handleSubmit}>
           <div className="grid grid-cols-4 gap-3 mb-4">
             <div>
-              <label className="field-label">Litros *</label>
-              <input
-                type="number"
-                step="0.1"
-                min="0.1"
-                value={liters}
-                onChange={(e) => setLiters(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-sm text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                required
-              />
+              <label className="field-label">Cantidad *</label>
+              <div className="flex gap-1">
+                <input
+                  type="number"
+                  step={unit === "ml" ? "1" : "0.1"}
+                  min={unit === "ml" ? "1" : "0.01"}
+                  value={liters}
+                  onChange={(e) => setLiters(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-sm text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  required
+                />
+                <select
+                  value={unit}
+                  onChange={(e) => switchUnit(e.target.value as "L" | "ml")}
+                  className="px-1 py-2 bg-gray-50 border border-gray-300 rounded-sm text-xs text-gray-700"
+                >
+                  <option value="L">L</option>
+                  <option value="ml">ml</option>
+                </select>
+              </div>
             </div>
             <div>
               <label className="field-label">EC</label>

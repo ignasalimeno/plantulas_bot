@@ -93,6 +93,7 @@ class IndoorDetail(BaseModel):
     extractor_top: bool
     extractor_bottom: bool
     fan: bool
+    pump: bool = False
     humidifier: bool
     humidifier_mode: str
     humidifier_on_below_humidity: Optional[float]
@@ -109,6 +110,7 @@ class IndoorDetail(BaseModel):
     light_schedule: Optional[str]
     stage: str
     stage_started_at: Optional[date]
+    updated_at: Optional[datetime] = None
     current_environment: Optional[CurrentEnvironment] = None
 
     class Config:
@@ -132,6 +134,7 @@ class IndoorCreateRequest(BaseModel):
     extractor_top: Optional[bool] = False
     extractor_bottom: Optional[bool] = False
     fan: Optional[bool] = False
+    pump: Optional[bool] = False
     humidifier: Optional[bool] = False
     humidifier_mode: Optional[str] = None
     humidifier_on_below_humidity: Optional[float] = None
@@ -160,6 +163,7 @@ class IndoorUpdateRequest(BaseModel):
     extractor_top: Optional[bool] = None
     extractor_bottom: Optional[bool] = None
     fan: Optional[bool] = None
+    pump: Optional[bool] = None
     humidifier: Optional[bool] = None
     humidifier_mode: Optional[str] = None
     humidifier_on_below_humidity: Optional[float] = None
@@ -549,6 +553,10 @@ class DeviceHaEntities(BaseModel):
     humidity: Optional[str] = None
     humidifier: Optional[str] = None
     ac: Optional[str] = None
+    extractor: Optional[str] = None
+    intractor: Optional[str] = None
+    fan: Optional[str] = None
+    pump: Optional[str] = None
 
 
 class DeviceCreate(BaseModel):
@@ -602,3 +610,86 @@ class DeviceCommands(BaseModel):
 class DeviceStateRequest(BaseModel):
     humidifier: Optional[bool] = None
     ac: Optional[bool] = None
+    extractor: Optional[bool] = None
+    intractor: Optional[bool] = None
+    fan: Optional[bool] = None
+    pump: Optional[bool] = None
+
+
+# ============ WATERING PLAN ============
+
+class WateringPlanUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    mode: Optional[str] = None  # interval_days | times_per_day
+    interval_days: Optional[int] = None
+    times_per_day: Optional[int] = None
+    amount: Optional[float] = None
+    unit: Optional[str] = None  # L | ml
+
+
+class WateringPlanItem(BaseModel):
+    indoor_id: UUID
+    enabled: bool
+    mode: str
+    interval_days: Optional[int] = None
+    times_per_day: Optional[int] = None
+    amount: Optional[float] = None
+    unit: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ============ ALERT RULES ============
+
+class AlertRuleCreate(BaseModel):
+    kind: str  # temp_out_of_range | humidity_below | watering_overdue
+    enabled: bool = True
+    min_value: Optional[float] = None
+    max_value: Optional[float] = None
+    duration_minutes: Optional[int] = None
+    tolerance_days: Optional[int] = None
+
+
+class AlertRuleUpdate(BaseModel):
+    kind: Optional[str] = None
+    enabled: Optional[bool] = None
+    min_value: Optional[float] = None
+    max_value: Optional[float] = None
+    duration_minutes: Optional[int] = None
+    tolerance_days: Optional[int] = None
+
+
+class AlertRuleItem(BaseModel):
+    id: UUID
+    indoor_id: UUID
+    kind: str
+    enabled: bool
+    min_value: Optional[float] = None
+    max_value: Optional[float] = None
+    duration_minutes: Optional[int] = None
+    tolerance_days: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ============ ALERTS ============
+
+class AlertItem(BaseModel):
+    id: UUID
+    indoor_id: UUID
+    rule_id: Optional[UUID] = None
+    kind: str
+    message: str
+    severity: str
+    triggered_at: datetime
+    resolved_at: Optional[datetime] = None
+    acknowledged: bool
+
+    class Config:
+        from_attributes = True
+
+
+class AlertUpdate(BaseModel):
+    acknowledged: Optional[bool] = None

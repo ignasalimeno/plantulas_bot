@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Sparkline, ChartPoint } from "./MetricChart";
 
 export type Status = "ok" | "low" | "high" | "none";
 
@@ -74,10 +75,28 @@ export function timeAgo(iso: string | null | undefined): string | null {
   return `hace ${d} d`;
 }
 
+export function fmtDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 const SOURCE_LABELS: Record<string, string> = {
   measurement: "medición",
   watering: "riego",
   indoor: "manual",
+};
+
+const STATUS_DOT: Record<Status, string> = {
+  ok: "bg-green-500",
+  low: "bg-yellow-500",
+  high: "bg-red-500",
+  none: "bg-gray-300",
 };
 
 export function ReadingCard({
@@ -92,7 +111,11 @@ export function ReadingCard({
   digits = 1,
   status,
   saving,
+  size = "md",
+  spark,
+  sparkColor = "#7CE38B",
   onSave,
+  onChart,
 }: {
   label: string;
   value: number | null;
@@ -105,7 +128,11 @@ export function ReadingCard({
   digits?: number;
   status: Status;
   saving?: boolean;
+  size?: "md" | "lg";
+  spark?: ChartPoint[];
+  sparkColor?: string;
   onSave: (value: number | null) => void;
+  onChart?: () => void;
 }) {
   const s = STATUS_STYLES[status];
   const [editing, setEditing] = useState(false);
@@ -131,17 +158,29 @@ export function ReadingCard({
     onSave(num);
   };
 
-  const recency = timeAgo(at);
   const sourceLabel = source ? SOURCE_LABELS[source] ?? source : null;
-
+  const valueClass = size === "lg" ? "text-4xl" : "text-2xl";
+  const inputClass = size === "lg" ? "text-3xl" : "text-xl";
   return (
     <div className={`border rounded-sm p-3 ${s.card}`}>
       <div className="flex items-center justify-between">
-        <p className="text-[10px] uppercase tracking-widest text-gray-500">{label}</p>
+        <div className="flex items-center gap-2">
+          <span className={`led ${STATUS_DOT[status]}`} />
+          <p className="text-[10px] uppercase tracking-widest text-gray-500">{label}</p>
+        </div>
         <div className="flex items-center gap-1.5">
           <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-semibold ${s.badge}`}>
             {s.label}
           </span>
+          {!editing && onChart && (
+            <button
+              onClick={onChart}
+              title="Ver gráfico"
+              className="text-gray-400 hover:text-blue-500 text-xs leading-none"
+            >
+              📈
+            </button>
+          )}
           {!editing && (
             <button
               onClick={startEdit}
@@ -173,32 +212,33 @@ export function ReadingCard({
             }
           }}
           disabled={saving}
-          className="w-full mt-2 px-2 py-1 bg-white border border-blue-400 rounded-sm text-xl font-bold text-gray-800 focus:outline-none"
+          className={`w-full mt-2 px-2 py-1 bg-white border border-blue-400 rounded-sm font-bold text-gray-800 focus:outline-none ${inputClass}`}
         />
       ) : (
         <button onClick={startEdit} className="block w-full text-left" title="Click para editar">
-          <p className={`text-2xl font-bold leading-none mt-2 ${s.value}`}>
+          <p className={`font-bold leading-none mt-2 ${valueClass} ${s.value}`}>
             {fmtNum(value, digits)}
           </p>
         </button>
       )}
 
-      <div className="flex items-center justify-between mt-1 min-h-[14px]">
-        {min != null || max != null ? (
+      {spark && spark.length >= 2 && (
+        <button onClick={onChart} className="block w-full mt-1" title="Expandir gráfico">
+          <Sparkline points={spark} color={sparkColor} height={26} />
+        </button>
+      )}
+
+      <div className="mt-1">
+        {(min != null || max != null) && (
           <p className="text-[10px] uppercase tracking-widest text-gray-500">
             ideal {fmtNum(min)}–{fmtNum(max)}
             {unit ? ` ${unit}` : ""}
           </p>
-        ) : (
-          <span />
         )}
-        {(sourceLabel || recency) && (
-          <span className="text-[10px] text-gray-400">
-            {sourceLabel}
-            {sourceLabel && recency ? " · " : ""}
-            {recency}
-          </span>
-        )}
+        <p className="text-[10px] text-gray-400">
+          última medición: {fmtDateTime(at)}
+          {sourceLabel ? ` · ${sourceLabel}` : ""}
+        </p>
       </div>
     </div>
   );

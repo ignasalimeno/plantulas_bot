@@ -3,8 +3,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import {
   useIndoorDetail,
   useDeletePlant,
-  useCreateIndoorHistoryEvent,
-  useDeleteIndoorHistoryEvent,
   useToast,
 } from "../hooks";
 import {
@@ -19,13 +17,13 @@ import {
 import {
   StagePanel,
   StageTargetsPanel,
-  MeasurementsPanel,
   ChecklistPanel,
 } from "../components/Grow";
 import { RiegoPanel } from "../components/Riego";
 import { FertilizersPanel } from "../components/Fertilizers";
 import { AmbientePanel } from "../components/Ambiente";
 import { DevicesPanel } from "../components/Devices";
+import { HistoryPanel } from "../components/History";
 import { CollapsiblePanel } from "../components/Collapsible";
 import { PlantDetail, Plant } from "../api/types";
 
@@ -43,8 +41,6 @@ export default function IndoorDetail() {
   const navigate = useNavigate();
   const { data, loading, error, refetch } = useIndoorDetail(id || "");
   const { deletePlant } = useDeletePlant();
-  const { createHistoryEvent, loading: creatingEvent } = useCreateIndoorHistoryEvent();
-  const { deleteHistoryEvent } = useDeleteIndoorHistoryEvent();
   const { toasts, showToast, removeToast } = useToast();
 
   const [waterModalOpen, setWaterModalOpen] = useState(false);
@@ -53,7 +49,6 @@ export default function IndoorDetail() {
   const [editPlant, setEditPlant] = useState<PlantDetail | null>(null);
   const [historyPlant, setHistoryPlant] = useState<PlantDetail | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PlantDetail | null>(null);
-  const [newEvent, setNewEvent] = useState("");
 
   if (!id) {
     return <div>ID de indoor no encontrado</div>;
@@ -122,37 +117,9 @@ export default function IndoorDetail() {
     }
   };
 
-  const handleAddEvent = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newEvent.trim()) return;
-    try {
-      await createHistoryEvent(data.indoor.id, newEvent.trim());
-      setNewEvent("");
-      showToast("Evento agregado", "success");
-      refetch();
-    } catch {
-      showToast("Error al agregar el evento", "error");
-    }
-  };
-
-  const handleDeleteEvent = async (eventId: string) => {
-    try {
-      await deleteHistoryEvent(data.indoor.id, eventId);
-      showToast("Evento eliminado", "success");
-      refetch();
-    } catch {
-      showToast("Error al eliminar el evento", "error");
-    }
-  };
-
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "—";
     return dateStr;
-  };
-
-  const formatDateTime = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("es-ES") + " " + date.toLocaleTimeString("es-ES");
   };
 
   return (
@@ -196,79 +163,23 @@ export default function IndoorDetail() {
         <StagePanel indoor={data.indoor} onUpdated={refetch} />
       </div>
 
-      {/* ===================== ZONA 1: AGUA & RIEGO ===================== */}
-      <ZoneLabel>Agua & Riego</ZoneLabel>
-
-      <div className="mb-8">
-        <RiegoPanel indoor={data.indoor} plants={data.plants} onUpdated={refetch} />
-      </div>
-
-      <div className="mb-8">
-        <FertilizersPanel indoorId={data.indoor.id} currentStage={data.indoor.stage} />
-      </div>
-
-      {/* ===================== ZONA 2: DISPOSITIVOS & AMBIENTE ===================== */}
+      {/* ===================== ZONA 1: DISPOSITIVOS & AMBIENTE ===================== */}
       <ZoneLabel>Dispositivos & Ambiente</ZoneLabel>
 
       <div className="mb-8">
-        <AmbientePanel indoor={data.indoor} onUpdated={refetch} />
+        <AmbientePanel indoor={data.indoor} events={data.history} onUpdated={refetch} />
       </div>
 
+      {/* ===================== ZONA 2: AGUA & RIEGO ===================== */}
+      <ZoneLabel>Agua & Riego</ZoneLabel>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start mb-8">
-        <MeasurementsPanel indoorId={data.indoor.id} />
-        <DevicesPanel indoorId={data.indoor.id} />
+        <RiegoPanel indoor={data.indoor} plants={data.plants} onUpdated={refetch} />
+        <HistoryPanel indoorId={data.indoor.id} events={data.history} onUpdated={refetch} />
       </div>
 
       {/* ===================== ZONA 3: DETALLE ===================== */}
       <ZoneLabel>Detalle</ZoneLabel>
-
-      {/* Historial */}
-      <div className="mb-10">
-        <CollapsiblePanel title="Historial">
-          <form onSubmit={handleAddEvent} className="flex gap-2 mb-4">
-            <input
-              type="text"
-              value={newEvent}
-              onChange={(e) => setNewEvent(e.target.value)}
-              placeholder="Agregar evento (ej: le subí la luz 40 cm)"
-              className="flex-1 px-3 py-2 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
-            />
-            <button
-              type="submit"
-              disabled={creatingEvent || !newEvent.trim()}
-              className="px-4 py-2 bg-blue-500 text-white rounded-sm hover:bg-blue-600 disabled:opacity-50 text-xs uppercase tracking-wider"
-            >
-              Agregar
-            </button>
-          </form>
-
-          {data.history.length > 0 ? (
-            <div className="space-y-2">
-              {data.history.map((event) => (
-                <div
-                  key={event.id}
-                  className="flex justify-between items-start gap-2 bg-gray-50 rounded-sm p-3"
-                >
-                  <p className="text-gray-800">{event.message}</p>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-sm text-gray-600">
-                      {formatDateTime(event.event_ts)}
-                    </span>
-                    <button
-                      onClick={() => handleDeleteEvent(event.id)}
-                      className="text-red-500 hover:text-red-700 text-xs"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState icon="📝" title="No hay historial" />
-          )}
-        </CollapsiblePanel>
-      </div>
 
       {/* Plantas */}
       <div className="mb-8">
@@ -351,6 +262,16 @@ export default function IndoorDetail() {
       {/* Objetivos por etapa */}
       <div className="mb-8">
         <StageTargetsPanel indoorId={data.indoor.id} currentStage={data.indoor.stage} />
+      </div>
+
+      {/* Fertilizantes */}
+      <div className="mb-8">
+        <FertilizersPanel indoorId={data.indoor.id} currentStage={data.indoor.stage} />
+      </div>
+
+      {/* Dispositivos (puentes Raspberry) */}
+      <div className="mb-8">
+        <DevicesPanel indoorId={data.indoor.id} />
       </div>
 
       {/* Water Modal */}

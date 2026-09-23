@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User, Indoor, Device, Measurement
+from app.models import User, Indoor, Device, Measurement, IndoorHistory
 from app.schemas import (
     DeviceCreate,
     DeviceUpdate,
@@ -24,6 +24,16 @@ from app.services import device_service
 from app.timeutils import now
 
 router = APIRouter(prefix="/api", tags=["devices"])
+
+ACTUATOR_FIELDS = ("humidifier", "ac", "extractor", "intractor", "fan", "pump")
+ACTUATOR_LABELS = {
+    "humidifier": "Humidificador",
+    "ac": "Aire acondicionado",
+    "extractor": "Extractor",
+    "intractor": "Intractor",
+    "fan": "Ventilador interno",
+    "pump": "Bomba de riego",
+}
 
 
 def _get_owned_indoor(db: Session, user: User, indoor_id: str) -> Indoor:
@@ -56,6 +66,17 @@ def get_current_device(
 
 
 # ============ DEVICE-FACING (bridge) ============
+
+@router.get("/devices/me")
+async def device_me(device: Device = Depends(get_current_device)):
+    """Return this device's config (entity IDs) so the bridge can use them."""
+    return {
+        "id": str(device.id),
+        "indoor_id": str(device.indoor_id),
+        "name": device.name,
+        "ha_entities": device.ha_entities or {},
+    }
+
 
 @router.post("/devices/telemetry")
 async def device_telemetry(
@@ -101,12 +122,26 @@ async def device_state(
     db: Session = Depends(get_db),
     device: Device = Depends(get_current_device),
 ):
-    """The bridge reports the real state it applied."""
-    device.reported_state = {
-        "humidifier": body.humidifier,
-        "ac": body.ac,
-        "at": now().isoformat(),
+    """The bridge reports the real state read from Home Assistant (read-only)."""
+    previous = device.reported_state or {}
+    new_state = {
+        field: getattr(body, field)
+        for field in ACTUATOR_FIELDS
+        if getattr(body, field) is not None
     }
+
+    # Log ON/OFF transitions so they show up in the indoor history timeline.
+    for field, value in new_state.items():
+        old = previous.get(field)
+        if old is not None and old != value:
+            db.add(IndoorHistory(
+                indoor_id=device.indoor_id,
+                event_ts=now(),
+                message=f"{ACTUATOR_LABELS[field]}: {'ON' if value else 'OFF'}",
+                payload={"device_id": str(device.id), "field": field, "value": value},
+            ))
+
+    device.reported_state = {**previous, **new_state, "at": now().isoformat()}
     device.last_seen = now()
     db.commit()
     return {"ok": True}

@@ -63,6 +63,7 @@ async def create_indoor(
         extractor_top=body.extractor_top,
         extractor_bottom=body.extractor_bottom,
         fan=body.fan,
+        pump=body.pump,
         humidifier=body.humidifier,
         humidifier_on_below_humidity=Decimal(str(body.humidifier_on_below_humidity)) if body.humidifier_on_below_humidity is not None else None,
         humidifier_off_above_humidity=Decimal(str(body.humidifier_off_above_humidity)) if body.humidifier_off_above_humidity is not None else None,
@@ -108,6 +109,7 @@ async def create_indoor(
         extractor_top=bool(indoor.extractor_top),
         extractor_bottom=bool(indoor.extractor_bottom),
         fan=bool(indoor.fan),
+        pump=bool(indoor.pump),
         humidifier=bool(indoor.humidifier),
         humidifier_on_below_humidity=float(indoor.humidifier_on_below_humidity) if indoor.humidifier_on_below_humidity is not None else None,
         humidifier_off_above_humidity=float(indoor.humidifier_off_above_humidity) if indoor.humidifier_off_above_humidity is not None else None,
@@ -208,6 +210,7 @@ async def get_indoor_detail(
         extractor_top=bool(indoor.extractor_top),
         extractor_bottom=bool(indoor.extractor_bottom),
         fan=bool(indoor.fan),
+        pump=bool(indoor.pump),
         humidifier=bool(indoor.humidifier),
         humidifier_on_below_humidity=float(indoor.humidifier_on_below_humidity) if indoor.humidifier_on_below_humidity is not None else None,
         humidifier_off_above_humidity=float(indoor.humidifier_off_above_humidity) if indoor.humidifier_off_above_humidity is not None else None,
@@ -224,6 +227,7 @@ async def get_indoor_detail(
         light_schedule=indoor.light_schedule,
         stage=indoor.stage,
         stage_started_at=indoor.stage_started_at,
+        updated_at=indoor.updated_at,
         current_environment=compute_current_environment(db, indoor),
     )
     
@@ -273,6 +277,7 @@ async def update_indoor_detail(
         extractor_top=body.extractor_top,
         extractor_bottom=body.extractor_bottom,
         fan=body.fan,
+        pump=body.pump,
         humidifier=body.humidifier,
         humidifier_on_below_humidity=body.humidifier_on_below_humidity,
         humidifier_off_above_humidity=body.humidifier_off_above_humidity,
@@ -300,6 +305,7 @@ async def update_indoor_detail(
         extractor_top=bool(updated_indoor.extractor_top),
         extractor_bottom=bool(updated_indoor.extractor_bottom),
         fan=bool(updated_indoor.fan),
+        pump=bool(updated_indoor.pump),
         humidifier=bool(updated_indoor.humidifier),
         humidifier_on_below_humidity=float(updated_indoor.humidifier_on_below_humidity) if updated_indoor.humidifier_on_below_humidity is not None else None,
         humidifier_off_above_humidity=float(updated_indoor.humidifier_off_above_humidity) if updated_indoor.humidifier_off_above_humidity is not None else None,
@@ -316,6 +322,7 @@ async def update_indoor_detail(
         light_schedule=updated_indoor.light_schedule,
         stage=updated_indoor.stage,
         stage_started_at=updated_indoor.stage_started_at,
+        updated_at=updated_indoor.updated_at,
         current_environment=compute_current_environment(db, updated_indoor),
     )
 

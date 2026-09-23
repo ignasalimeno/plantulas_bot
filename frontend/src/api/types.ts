@@ -74,6 +74,7 @@ export interface IndoorDetail {
   extractor_top: boolean;
   extractor_bottom: boolean;
   fan: boolean;
+  pump: boolean;
   humidifier: boolean;
   humidifier_mode: string;
   humidifier_on_below_humidity: number | null;
@@ -90,6 +91,7 @@ export interface IndoorDetail {
   light_schedule: string | null;
   stage: string;
   stage_started_at: string | null;
+  updated_at?: string | null;
   current_environment?: CurrentEnvironment | null;
 }
 
@@ -127,6 +129,7 @@ export interface IndoorUpdateRequest {
   extractor_top?: boolean;
   extractor_bottom?: boolean;
   fan?: boolean;
+  pump?: boolean;
   humidifier?: boolean;
   humidifier_mode?: string;
   humidifier_on_below_humidity?: number | null;
@@ -153,6 +156,7 @@ export interface IndoorCreateRequest {
   extractor_top?: boolean;
   extractor_bottom?: boolean;
   fan?: boolean;
+  pump?: boolean;
   humidifier?: boolean;
   humidifier_on_below_humidity?: number | null;
   humidifier_off_above_humidity?: number | null;
@@ -304,6 +308,10 @@ export interface DeviceHaEntities {
   humidity?: string | null;
   humidifier?: string | null;
   ac?: string | null;
+  extractor?: string | null;
+  intractor?: string | null;
+  fan?: string | null;
+  pump?: string | null;
 }
 
 export interface Device {
@@ -432,4 +440,57 @@ export interface IndoorWateringUpdate {
 export interface ApiError {
   detail?: string | { msg: string; loc?: string[] }[];
   message?: string;
+}
+
+export interface WateringPlan {
+  indoor_id: string;
+  enabled: boolean;
+  mode: "interval_days" | "times_per_day";
+  interval_days: number | null;
+  times_per_day: number | null;
+  amount: number | null;
+  unit: string | null;
+}
+
+export interface WateringPlanUpdate {
+  enabled?: boolean;
+  mode?: "interval_days" | "times_per_day";
+  interval_days?: number | null;
+  times_per_day?: number | null;
+  amount?: number | null;
+  unit?: string | null;
+}
+
+export type AlertKind = "temp_out_of_range" | "humidity_below" | "watering_overdue";
+
+export interface AlertRule {
+  id: string;
+  indoor_id: string;
+  kind: AlertKind;
+  enabled: boolean;
+  min_value: number | null;
+  max_value: number | null;
+  duration_minutes: number | null;
+  tolerance_days: number | null;
+}
+
+export interface AlertRuleCreate {
+  kind: AlertKind;
+  enabled?: boolean;
+  min_value?: number | null;
+  max_value?: number | null;
+  duration_minutes?: number | null;
+  tolerance_days?: number | null;
+}
+
+export interface Alert {
+  id: string;
+  indoor_id: string;
+  rule_id: string | null;
+  kind: string;
+  message: string;
+  severity: string;
+  triggered_at: string;
+  resolved_at: string | null;
+  acknowledged: boolean;
 }

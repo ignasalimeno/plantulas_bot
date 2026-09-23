@@ -1,9 +1,9 @@
 # Raspberry Pi Bridge
 
-Conecta tu cultivo con PlantulasBot: lee temp/humedad desde **Home Assistant** y controla el **humidificador** (enchufe) y el **aire** (IR blaster) según lo que define la app.
+Conecta tu cultivo con PlantulasBot en **modo solo lectura**: lee sensores (temp/humedad) y el estado (on/off) de los equipos desde **Home Assistant** y los reporta a la app. **No controla nada** — toda la automatización vive en HA.
 
 ```
-Tuya/Smart Life ──► Home Assistant (Pi) ──► bridge.py ──► PlantulasBot (Render)
+Tuya/Smart Life ──► Home Assistant ──► bridge.py ──► PlantulasBot (Render)
 ```
 
 ## 1. Home Assistant + Tuya
@@ -11,10 +11,12 @@ Tuya/Smart Life ──► Home Assistant (Pi) ──► bridge.py ──► Plan
 2. Creá una cuenta en **Tuya IoT Platform** (iot.tuya.com), un **Cloud project** y **vinculá tu cuenta de Smart Life**.
 3. En HA: **Ajustes → Dispositivos y servicios → Añadir integración → Tuya** y cargá el **Access ID** y **Access Secret**.
 4. Verificá que aparezcan las entidades. Anotá los `entity_id`:
-   - Sensor temperatura → `sensor.carpa_temperatura`
-   - Sensor humedad → `sensor.carpa_humedad`
-   - Enchufe humidificador → `switch.humidificador`
+   - Sensor temperatura → `sensor.sensor_humedad_temperatura`
+   - Sensor humedad → `sensor.sensor_humedad_humedad`
+   - Humidificador → `switch.humidificador_enchufe_1`
    - Aire (IR) → `climate.aire`
+   - Intractor → `switch.intractor_enchufe_1` (el extractor es el mismo equipo)
+   - Ventilador interno / Bomba de riego → cuando los sumes a HA
 
 ## 2. Token de dispositivo en la app
 1. En PlantulasBot → tu indoor → panel **Dispositivos** → **+ Nuevo dispositivo**.
@@ -33,7 +35,8 @@ python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 
 cp .env.example .env
-nano .env   # completá BACKEND_URL, DEVICE_TOKEN, HA_TOKEN y las entidades
+nano .env   # completá BACKEND_URL, DEVICE_TOKEN, HA_URL y HA_TOKEN
+            # (las entidades de HA se cargan en la app, en el device)
 ```
 
 Probar a mano:
@@ -50,16 +53,11 @@ sudo systemctl enable --now plantulas-bridge
 sudo journalctl -u plantulas-bridge -f   # ver logs
 ```
 
-## Cómo funciona el control
-Cada `INTERVAL_SECONDS` (por defecto 900 = 15 min):
-1. Lee temp/humedad de HA y las sube (`/api/devices/telemetry`).
-2. Pide el estado deseado (`/api/devices/commands`).
-3. Aplica en HA (prende/apaga el humidificador y el aire).
-4. Reporta el estado aplicado (`/api/devices/state`).
+## Cómo funciona (solo lectura)
+Cada `INTERVAL_SECONDS` (por defecto 60):
+1. Lee temp/humedad de HA y las sube (`/api/devices/telemetry`) → queda como medición (historial para gráficos).
+2. Lee el estado on/off de los equipos y lo reporta (`/api/devices/state`).
 
-El estado deseado se calcula en la app según el **modo** de cada equipo:
-- **auto**: usa los umbrales del indoor (humedad/temperatura).
-- **manual**: lo que forzás desde la app.
-- **off**: siempre apagado.
+En el backend, cada **cambio de estado** (on↔off) de un equipo se registra como un **evento en el historial** del indoor (ej: "Bomba de riego: ON"). Así podés ver cuándo se prendió cada cosa.
 
-Si el backend no responde, el bridge **mantiene el último estado** (no cambia nada).
+El bridge **no prende ni apaga nada**. Si el backend no responde, solo reintenta en el próximo ciclo.

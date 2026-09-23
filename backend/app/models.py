@@ -45,6 +45,7 @@ class Indoor(Base):
     extractor_top = Column(Boolean, default=False)
     extractor_bottom = Column(Boolean, default=False)
     fan = Column(Boolean, default=False)
+    pump = Column(Boolean, default=False, server_default="false")
     humidifier = Column(Boolean, default=False)
     humidifier_mode = Column(Text, nullable=False, server_default="auto")  # auto | manual | off
     # Humidifier thresholds
@@ -81,6 +82,9 @@ class Indoor(Base):
     fertilizer_plan = relationship("IndoorFertilizerPlan", back_populates="indoor", cascade="all, delete-orphan")
     fertilizer_applications = relationship("FertilizerApplication", back_populates="indoor", cascade="all, delete-orphan")
     devices = relationship("Device", back_populates="indoor", cascade="all, delete-orphan")
+    watering_plan = relationship("WateringPlan", back_populates="indoor", uselist=False, cascade="all, delete-orphan")
+    alert_rules = relationship("AlertRule", back_populates="indoor", cascade="all, delete-orphan")
+    alerts = relationship("Alert", back_populates="indoor", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Indoor(id={self.id}, name={self.name})>"
@@ -343,3 +347,70 @@ Index("idx_indoor_history_indoor_ts", IndoorHistory.indoor_id, IndoorHistory.eve
 Index("idx_measurements_indoor_ts", Measurement.indoor_id, Measurement.event_ts.desc())
 Index("idx_tasks_indoor", Task.indoor_id, Task.is_done)
 Index("idx_fertilizer_applications_indoor_ts", FertilizerApplication.indoor_id, FertilizerApplication.applied_at.desc())
+
+
+class WateringPlan(Base):
+    """Per-indoor watering plan (frequency + amount)."""
+    __tablename__ = "watering_plans"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    indoor_id = Column(UUID(as_uuid=True), ForeignKey("indoors.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    enabled = Column(Boolean, nullable=False, default=True, server_default="true")
+    mode = Column(Text, nullable=False, server_default="interval_days")  # interval_days | times_per_day
+    interval_days = Column(Integer)
+    times_per_day = Column(Integer)
+    amount = Column(Numeric(8, 3))
+    unit = Column(Text, server_default="L")  # L | ml
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    indoor = relationship("Indoor", back_populates="watering_plan")
+
+    def __repr__(self):
+        return f"<WateringPlan(indoor_id={self.indoor_id}, mode={self.mode})>"
+
+
+class AlertRule(Base):
+    """A condition that triggers an alert for an indoor."""
+    __tablename__ = "alert_rules"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    indoor_id = Column(UUID(as_uuid=True), ForeignKey("indoors.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind = Column(Text, nullable=False)  # temp_out_of_range | humidity_below | watering_overdue
+    enabled = Column(Boolean, nullable=False, default=True, server_default="true")
+    min_value = Column(Numeric(6, 2))
+    max_value = Column(Numeric(6, 2))
+    duration_minutes = Column(Integer)
+    tolerance_days = Column(Integer)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    indoor = relationship("Indoor", back_populates="alert_rules")
+    alerts = relationship("Alert", back_populates="rule")
+
+    def __repr__(self):
+        return f"<AlertRule(id={self.id}, kind={self.kind})>"
+
+
+class Alert(Base):
+    """A triggered alert instance."""
+    __tablename__ = "alerts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    indoor_id = Column(UUID(as_uuid=True), ForeignKey("indoors.id", ondelete="CASCADE"), nullable=False, index=True)
+    rule_id = Column(UUID(as_uuid=True), ForeignKey("alert_rules.id", ondelete="SET NULL"))
+    kind = Column(Text, nullable=False)
+    message = Column(Text, nullable=False)
+    severity = Column(Text, nullable=False, server_default="warning")
+    triggered_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    resolved_at = Column(DateTime(timezone=True))
+    acknowledged = Column(Boolean, nullable=False, default=False, server_default="false")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    indoor = relationship("Indoor", back_populates="alerts")
+    rule = relationship("AlertRule", back_populates="alerts")
+
+    def __repr__(self):
+        return f"<Alert(id={self.id}, kind={self.kind}, resolved={self.resolved_at is not None})>"
+
+
+Index("idx_alerts_indoor_ts", Alert.indoor_id, Alert.triggered_at.desc())

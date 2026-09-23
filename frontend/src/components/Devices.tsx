@@ -14,6 +14,15 @@ function fmtDateTime(s: string | null) {
   return new Date(s).toLocaleString("es-ES");
 }
 
+const ACTUATOR_KEYS: Array<[string, string]> = [
+  ["humidifier", "humidificador"],
+  ["ac", "aire"],
+  ["extractor", "extractor"],
+  ["intractor", "intractor"],
+  ["fan", "ventilador"],
+  ["pump", "bomba"],
+];
+
 export function DevicesPanel({ indoorId }: { indoorId: string }) {
   const { data: devices, loading, refetch } = useDevices(indoorId);
   const { createDevice, loading: creating } = useCreateDevice();
@@ -29,6 +38,10 @@ export function DevicesPanel({ indoorId }: { indoorId: string }) {
     humidity: "",
     humidifier: "",
     ac: "",
+    extractor: "",
+    intractor: "",
+    fan: "",
+    pump: "",
   });
   const [newToken, setNewToken] = useState<{ token: string; name: string } | null>(null);
 
@@ -43,11 +56,25 @@ export function DevicesPanel({ indoorId }: { indoorId: string }) {
           humidity: form.humidity || null,
           humidifier: form.humidifier || null,
           ac: form.ac || null,
+          extractor: form.extractor || null,
+          intractor: form.intractor || null,
+          fan: form.fan || null,
+          pump: form.pump || null,
         },
       });
       if (res) {
         setNewToken({ token: res.token, name: res.device.name });
-        setForm({ name: "", temp: "", humidity: "", humidifier: "", ac: "" });
+        setForm({
+          name: "",
+          temp: "",
+          humidity: "",
+          humidifier: "",
+          ac: "",
+          extractor: "",
+          intractor: "",
+          fan: "",
+          pump: "",
+        });
         setShowForm(false);
         showToast("Dispositivo creado", "success");
         refetch();
@@ -149,6 +176,10 @@ export function DevicesPanel({ indoorId }: { indoorId: string }) {
                   ["humidity", "Sensor humedad", "sensor.carpa_hr"],
                   ["humidifier", "Switch humidificador", "switch.humidificador"],
                   ["ac", "Aire (climate/switch)", "climate.aire"],
+                  ["extractor", "Switch extractor", "switch.extractor"],
+                  ["intractor", "Switch intractor", "switch.intractor"],
+                  ["fan", "Switch ventilador interno", "switch.ventilador"],
+                  ["pump", "Switch bomba de riego", "switch.bomba_riego"],
                 ] as const).map(([key, label, ph]) => (
                   <div key={key}>
                     <label className="block text-xs text-gray-500 mb-1">{label}</label>
@@ -183,14 +214,15 @@ export function DevicesPanel({ indoorId }: { indoorId: string }) {
                       <p className="text-sm text-gray-800 font-medium">{d.name}</p>
                       <p className="text-xs text-gray-500">
                         último contacto: {fmtDateTime(d.last_seen)}
-                        {d.reported_state && (
-                          <>
-                            {" · "}
-                            humidificador: {d.reported_state.humidifier ? "ON" : "OFF"}
-                            {" · "}
-                            aire: {d.reported_state.ac ? "ON" : "OFF"}
-                          </>
-                        )}
+                        {d.reported_state &&
+                          ACTUATOR_KEYS.filter(([key]) => typeof d.reported_state?.[key] === "boolean").map(
+                            ([key, label]) => (
+                              <span key={key}>
+                                {" · "}
+                                {label}: {d.reported_state?.[key] ? "ON" : "OFF"}
+                              </span>
+                            )
+                          )}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">

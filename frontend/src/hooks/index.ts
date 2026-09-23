@@ -36,6 +36,11 @@ import {
   DeviceCreateResponse,
   IndoorDetail,
   Plant,
+  Alert,
+  AlertRule,
+  AlertRuleCreate,
+  WateringPlan,
+  WateringPlanUpdate,
 } from "../api/types";
 
 interface UseState<T> {
@@ -1250,4 +1255,188 @@ export function useToast() {
   }, []);
 
   return { toasts, showToast, removeToast };
+}
+
+/**
+ * Hook para las alertas de un indoor (el backend evalúa las reglas al pedirlas).
+ */
+export function useAlerts(indoorId: string): UseState<Alert[]> {
+  const [data, setData] = useState<Alert[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchData = useCallback(async () => {
+    if (!indoorId) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const result = await apiClient.get<Alert[]>(`/api/indoors/${indoorId}/alerts`);
+      setData(result);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error("Failed to fetch alerts"));
+    } finally {
+      setLoading(false);
+    }
+  }, [indoorId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  return { data, loading, error, refetch: fetchData };
+}
+
+export function useDeleteAlert() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const deleteAlert = useCallback(async (alertId: string): Promise<void> => {
+    try {
+      setLoading(true);
+      setError(null);
+      await apiClient.delete(`/api/alerts/${alertId}`);
+    } catch (err) {
+      const e = err instanceof Error ? err : new Error("Failed to delete alert");
+      setError(e);
+      throw e;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { deleteAlert, loading, error };
+}
+
+export function useAcknowledgeAlert() {
+  const acknowledge = useCallback(async (alertId: string, acknowledged: boolean): Promise<void> => {
+    await apiClient.patch(`/api/alerts/${alertId}`, { acknowledged });
+  }, []);
+  return { acknowledge };
+}
+
+/**
+ * Hook para las reglas de alerta de un indoor.
+ */
+export function useAlertRules(indoorId: string): UseState<AlertRule[]> {
+  const [data, setData] = useState<AlertRule[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchData = useCallback(async () => {
+    if (!indoorId) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const result = await apiClient.get<AlertRule[]>(`/api/indoors/${indoorId}/alert-rules`);
+      setData(result);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error("Failed to fetch alert rules"));
+    } finally {
+      setLoading(false);
+    }
+  }, [indoorId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  return { data, loading, error, refetch: fetchData };
+}
+
+export function useCreateAlertRule() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const createRule = useCallback(
+    async (indoorId: string, data: AlertRuleCreate): Promise<AlertRule | null> => {
+      try {
+        setLoading(true);
+        setError(null);
+        return await apiClient.post<AlertRule>(`/api/indoors/${indoorId}/alert-rules`, data);
+      } catch (err) {
+        const e = err instanceof Error ? err : new Error("Failed to create alert rule");
+        setError(e);
+        throw e;
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  return { createRule, loading, error };
+}
+
+export function useDeleteAlertRule() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const deleteRule = useCallback(async (ruleId: string): Promise<void> => {
+    try {
+      setLoading(true);
+      setError(null);
+      await apiClient.delete(`/api/alert-rules/${ruleId}`);
+    } catch (err) {
+      const e = err instanceof Error ? err : new Error("Failed to delete alert rule");
+      setError(e);
+      throw e;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { deleteRule, loading, error };
+}
+
+/**
+ * Hook para el plan de riego de un indoor.
+ */
+export function useWateringPlan(indoorId: string): UseState<WateringPlan> {
+  const [data, setData] = useState<WateringPlan | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchData = useCallback(async () => {
+    if (!indoorId) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const result = await apiClient.get<WateringPlan>(`/api/indoors/${indoorId}/watering-plan`);
+      setData(result);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error("Failed to fetch watering plan"));
+    } finally {
+      setLoading(false);
+    }
+  }, [indoorId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  return { data, loading, error, refetch: fetchData };
+}
+
+export function useUpdateWateringPlan() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const updatePlan = useCallback(
+    async (indoorId: string, data: WateringPlanUpdate): Promise<WateringPlan | null> => {
+      try {
+        setLoading(true);
+        setError(null);
+        return await apiClient.put<WateringPlan>(`/api/indoors/${indoorId}/watering-plan`, data);
+      } catch (err) {
+        const e = err instanceof Error ? err : new Error("Failed to update watering plan");
+        setError(e);
+        throw e;
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  return { updatePlan, loading, error };
 }

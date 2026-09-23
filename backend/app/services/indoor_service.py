@@ -40,6 +40,7 @@ def update_indoor(
     extractor_top: bool | None = None,
     extractor_bottom: bool | None = None,
     fan: bool | None = None,
+    pump: bool | None = None,
     humidifier: bool | None = None,
     humidifier_on_below_humidity: float | None = None,
     humidifier_off_above_humidity: float | None = None,
@@ -76,6 +77,8 @@ def update_indoor(
         indoor.extractor_bottom = extractor_bottom
     if fan is not None:
         indoor.fan = fan
+    if pump is not None:
+        indoor.pump = pump
     if humidifier is not None:
         indoor.humidifier = humidifier
     if humidifier_on_below_humidity is not None:

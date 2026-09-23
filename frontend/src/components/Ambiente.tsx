@@ -1,70 +1,165 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   useStageTargets,
   useUpdateIndoor,
   useCreateMeasurement,
+  useIndoorWateringHistory,
+  useMeasurements,
+  useDevices,
+  useAlerts,
   useToast,
 } from "../hooks";
 import { ToastContainer } from "./Modals";
 import { Chevron } from "./Collapsible";
-import { ReadingCard, rangeStatus, CardSpec, Status } from "./Readings";
-import { IndoorDetail, IndoorUpdateRequest, MeasurementCreate } from "../api/types";
+import { AlertsModal } from "./Alerts";
+import { ReadingCard, rangeStatus, fmtDateTime, CardSpec, Status } from "./Readings";
+import { MetricChart, Sparkline, ChartPoint } from "./MetricChart";
+import { IndoorDetail, IndoorUpdateRequest, MeasurementCreate, IndoorHistory, Measurement } from "../api/types";
 
 type AmbienteForm = IndoorUpdateRequest;
 
-type HumidifierRecommendation = "on" | "off" | null;
+type DeviceField = "ac" | "humidifier" | "extractor_top" | "extractor_bottom" | "fan" | "pump";
 
-function humidifierRecommendation(
-  indoor: IndoorDetail,
-  tempValue: number | null | undefined,
-  humidityValue: number | null | undefined
-): HumidifierRecommendation {
-  const {
-    humidifier_off_above_humidity,
-    humidifier_off_below_temp,
-    humidifier_on_below_humidity,
-    humidifier_on_above_temp,
-  } = indoor;
+type ChartMetric =
+  | { kind: "reading"; field: string; label: string; unit?: string; base: number; spread: number }
+  | { kind: "device"; field: string; label: string; eventLabel: string };
 
-  if (
-    humidifier_off_above_humidity != null &&
-    humidityValue != null &&
-    humidityValue > humidifier_off_above_humidity
-  ) {
-    return "off";
+function simulateReading(base: number, spread: number, hours = 24, n = 48): ChartPoint[] {
+  const now = Date.now();
+  const pts: ChartPoint[] = [];
+  for (let i = 0; i < n; i++) {
+    const t = now - (hours * 3600 * 1000 * (n - 1 - i)) / (n - 1);
+    const v = base + Math.sin(i / 4) * spread + (Math.random() - 0.5) * spread * 0.4;
+    pts.push({ t, v: Math.round(v * 10) / 10 });
   }
-  if (
-    humidifier_off_below_temp != null &&
-    tempValue != null &&
-    tempValue < humidifier_off_below_temp
-  ) {
-    return "off";
+  return pts;
+}
+
+function simulateDevice(hours = 24, n = 16): ChartPoint[] {
+  const now = Date.now();
+  const pts: ChartPoint[] = [];
+  let state = Math.random() > 0.5 ? 1 : 0;
+  for (let i = 0; i < n; i++) {
+    const t = now - (hours * 3600 * 1000 * (n - 1 - i)) / (n - 1);
+    if (Math.random() < 0.35) state = state ? 0 : 1;
+    pts.push({ t, v: state });
   }
-  if (
-    humidifier_on_below_humidity != null &&
-    humidityValue != null &&
-    humidityValue < humidifier_on_below_humidity
-  ) {
-    return "on";
-  }
-  if (
-    humidifier_on_above_temp != null &&
-    tempValue != null &&
-    tempValue > humidifier_on_above_temp
-  ) {
-    return "on";
-  }
-  return null;
+  return pts;
+}
+
+const WINDOW_MS = 24 * 3600 * 1000;
+
+const READING_CHART: Record<string, { base: number; spread: number }> = {
+  temp_c: { base: 24, spread: 3 },
+  humidity: { base: 60, spread: 12 },
+};
+
+const DEVICE_METRICS: Array<{ field: string; label: string; eventLabel: string }> = [
+  { field: "ac", label: "Aire", eventLabel: "Aire acondicionado" },
+  { field: "humidifier", label: "Humidificador", eventLabel: "Humidificador" },
+];
+
+function buildReadingSeries(
+  measurements: Measurement[] | null | undefined,
+  field: string,
+  base: number,
+  spread: number
+): { points: ChartPoint[]; simulated: boolean } {
+  const cutoff = Date.now() - WINDOW_MS;
+  const real = (measurements ?? [])
+    .map((m) => ({ m, v: (m as unknown as Record<string, number | null>)[field] }))
+    .filter((x) => x.v != null && new Date(x.m.event_ts).getTime() >= cutoff)
+    .map((x) => ({ t: new Date(x.m.event_ts).getTime(), v: Number(x.v) }))
+    .sort((a, b) => a.t - b.t);
+  if (real.length >= 2) return { points: real, simulated: false };
+  return { points: simulateReading(base, spread), simulated: true };
+}
+
+function buildDeviceSeries(
+  events: IndoorHistory[] | null | undefined,
+  eventLabel: string
+): { points: ChartPoint[]; simulated: boolean } {
+  const cutoff = Date.now() - WINDOW_MS;
+  const real = (events ?? [])
+    .filter((e) => e.message.startsWith(eventLabel + ":") && new Date(e.event_ts).getTime() >= cutoff)
+    .map((e) => ({ t: new Date(e.event_ts).getTime(), v: e.message.includes("ON") ? 1 : 0 }))
+    .sort((a, b) => a.t - b.t);
+  if (real.length >= 2) return { points: real, simulated: false };
+  return { points: simulateDevice(), simulated: true };
+}
+
+function DeviceCard({
+  title,
+  active,
+  manual,
+  lastContact,
+  spark,
+  onToggle,
+  onChart,
+}: {
+  title: string;
+  active: boolean;
+  manual: boolean;
+  lastContact?: string | null;
+  spark?: ChartPoint[];
+  onToggle: () => void;
+  onChart?: () => void;
+}) {
+  return (
+    <div
+      className={`border rounded-sm p-3 ${
+        active ? "border-green-500 bg-green-50" : "border-gray-200 bg-gray-50"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={`led shrink-0 ${active ? "bg-green-500" : "bg-gray-300"}`} />
+          <button
+            onClick={onChart}
+            title="Ver historial"
+            className="text-[10px] uppercase tracking-widest text-gray-500 truncate hover:text-blue-500"
+          >
+            {title}
+          </button>
+        </div>
+        <button
+          onClick={onToggle}
+          title="Cambiar manualmente"
+          className={`px-3 py-1 rounded-sm text-xs uppercase tracking-wider shrink-0 ${
+            active
+              ? "bg-blue-500 text-white hover:bg-blue-600"
+              : "border border-gray-300 text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          {active ? "● ON" : "○ OFF"}
+        </button>
+      </div>
+      {spark && spark.length >= 2 && (
+        <button onClick={onChart} className="block w-full mt-1" title="Expandir gráfico">
+          <Sparkline points={spark} step color="#FFB000" height={24} />
+        </button>
+      )}
+      <p className="text-[10px] text-gray-400 mt-2">
+        {manual ? "manual" : "HA"} · último contacto: {fmtDateTime(lastContact)}
+      </p>
+    </div>
+  );
 }
 
 export function AmbientePanel({
   indoor,
+  events,
   onUpdated,
 }: {
   indoor: IndoorDetail;
+  events: IndoorHistory[];
   onUpdated: () => void;
 }) {
   const { data: targets } = useStageTargets(indoor.id);
+  const { data: history, refetch: refetchHistory } = useIndoorWateringHistory(indoor.id);
+  const { data: devices, refetch: refetchDevices } = useDevices(indoor.id);
+  const { data: measurements } = useMeasurements(indoor.id);
+  const { data: alerts } = useAlerts(indoor.id);
   const { updateIndoor, loading: saving } = useUpdateIndoor();
   const { createMeasurement } = useCreateMeasurement();
   const { toasts, showToast, removeToast } = useToast();
@@ -73,9 +168,22 @@ export function AmbientePanel({
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState<AmbienteForm>({});
   const [savingField, setSavingField] = useState<string | null>(null);
+  const [chart, setChart] = useState<ChartMetric | null>(null);
+  const [alertsOpen, setAlertsOpen] = useState(false);
 
   const env = indoor.current_environment;
   const target = targets?.find((t) => t.stage === indoor.stage) ?? null;
+  const lastWatering = history && history.length > 0 ? history[0] : null;
+
+  const device = devices && devices.length > 0 ? devices[0] : null;
+  const reported = (device?.reported_state ?? {}) as Record<string, unknown>;
+  const lastContact = device?.last_seen ?? null;
+
+  const deviceState = (field: string, indoorValue: boolean) => {
+    const ha = reported[field];
+    if (typeof ha === "boolean") return { active: ha, manual: false };
+    return { active: indoorValue, manual: true };
+  };
 
   const handleChange = (field: keyof AmbienteForm, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -91,6 +199,12 @@ export function AmbientePanel({
     } catch {
       showToast("Error al guardar", "error");
     }
+  };
+
+  const refreshNow = () => {
+    refetchDevices();
+    refetchHistory();
+    onUpdated();
   };
 
   const saveReading = async (field: string, value: number | null) => {
@@ -121,47 +235,16 @@ export function AmbientePanel({
     }
   };
 
-  const handleToggleHumidifier = async () => {
+  const toggleDevice = async (field: DeviceField) => {
     try {
-      await updateIndoor(indoor.id, { humidifier: !indoor.humidifier });
+      await updateIndoor(indoor.id, { [field]: !indoor[field] } as IndoorUpdateRequest);
       onUpdated();
     } catch {
-      showToast("Error al actualizar el humidificador", "error");
+      showToast("Error al actualizar el dispositivo", "error");
     }
   };
 
-  const handleSetMode = async (field: "humidifier_mode" | "ac_mode", value: string) => {
-    try {
-      await updateIndoor(indoor.id, { [field]: value });
-      onUpdated();
-    } catch {
-      showToast("Error al cambiar el modo", "error");
-    }
-  };
-
-  const handleToggleAc = async () => {
-    try {
-      await updateIndoor(indoor.id, { ac: !indoor.ac });
-      onUpdated();
-    } catch {
-      showToast("Error al actualizar el aire", "error");
-    }
-  };
-
-  const tempValue = env?.temp_c?.value ?? indoor.temp_c;
-  const humidityValue = env?.humidity?.value ?? indoor.humidity;
-  const recommendation = humidifierRecommendation(indoor, tempValue, humidityValue);
-
-  const acRecommendation: "on" | "off" | null =
-    tempValue == null
-      ? null
-      : indoor.ac_on_above_temp != null && tempValue > indoor.ac_on_above_temp
-      ? "on"
-      : indoor.ac_off_below_temp != null && tempValue < indoor.ac_off_below_temp
-      ? "off"
-      : null;
-
-  const readingCards: CardSpec[] = [
+  const climateCards: CardSpec[] = [
     {
       key: "temp_c",
       label: "Temperatura",
@@ -188,19 +271,9 @@ export function AmbientePanel({
       digits: 0,
       save: (v) => saveReading("humidity", v),
     },
-    {
-      key: "ppfd",
-      label: "PPFD",
-      value: env?.ppfd?.value ?? null,
-      at: env?.ppfd?.at,
-      source: env?.ppfd?.source,
-      min: target?.ppfd_min,
-      max: target?.ppfd_max,
-      unit: "",
-      step: "1",
-      digits: 0,
-      save: (v) => saveReading("ppfd", v),
-    },
+  ];
+
+  const lightCards: CardSpec[] = [
     {
       key: "light_height_cm",
       label: "Altura luz",
@@ -223,6 +296,19 @@ export function AmbientePanel({
       digits: 0,
       save: (v) => saveSetting("light_power_pct", v),
     },
+    {
+      key: "ppfd",
+      label: "PPFD",
+      value: env?.ppfd?.value ?? null,
+      at: env?.ppfd?.at,
+      source: env?.ppfd?.source,
+      min: target?.ppfd_min,
+      max: target?.ppfd_max,
+      unit: "",
+      step: "1",
+      digits: 0,
+      save: (v) => saveReading("ppfd", v),
+    },
   ];
 
   const scheduleOk =
@@ -235,6 +321,45 @@ export function AmbientePanel({
       : scheduleOk
       ? "ok"
       : "high";
+
+  const ac = deviceState("ac", indoor.ac);
+  const humidifier = deviceState("humidifier", indoor.humidifier);
+  const extractor = deviceState("extractor", indoor.extractor_top);
+  const intractor = deviceState("intractor", indoor.extractor_bottom);
+  const fan = deviceState("fan", indoor.fan);
+  const pump = deviceState("pump", indoor.pump);
+
+  const seriesMap = useMemo(() => {
+    const map: Record<string, { points: ChartPoint[]; simulated: boolean }> = {};
+    Object.entries(READING_CHART).forEach(([field, cfg]) => {
+      map[`reading:${field}`] = buildReadingSeries(measurements, field, cfg.base, cfg.spread);
+    });
+    DEVICE_METRICS.forEach((d) => {
+      map[`device:${d.field}`] = buildDeviceSeries(events, d.eventLabel);
+    });
+    return map;
+  }, [measurements, events]);
+
+  const openReadingChart = (card: CardSpec) => {
+    const cfg = READING_CHART[card.key];
+    if (!cfg) return;
+    setChart({
+      kind: "reading",
+      field: card.key,
+      label: card.label,
+      unit: card.unit,
+      base: cfg.base,
+      spread: cfg.spread,
+    });
+  };
+
+  const openDeviceChart = (field: string, label: string, eventLabel: string) => {
+    setChart({ kind: "device", field, label, eventLabel });
+  };
+
+  const chartData = chart
+    ? seriesMap[`${chart.kind}:${chart.field}`] ?? { points: [] as ChartPoint[], simulated: false }
+    : { points: [] as ChartPoint[], simulated: false };
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
@@ -249,33 +374,52 @@ export function AmbientePanel({
             Dispositivos & Ambiente
           </h3>
         </button>
-        {editMode ? (
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                setEditMode(false);
-                setFormData({});
-              }}
-              className="px-3 py-1 text-xs uppercase tracking-wider border border-gray-300 text-gray-700 rounded-sm hover:bg-gray-100"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-3 py-1 text-xs uppercase tracking-wider bg-blue-500 text-white rounded-sm hover:bg-blue-600 disabled:opacity-50"
-            >
-              {saving ? "Guardando..." : "Guardar"}
-            </button>
-          </div>
-        ) : (
+        <div className="flex gap-2">
           <button
-            onClick={() => setEditMode(true)}
+            onClick={() => setAlertsOpen(true)}
+            className="relative px-3 py-1 text-xs uppercase tracking-wider border border-gray-300 text-gray-700 rounded-sm hover:bg-gray-100"
+          >
+            Alertas
+            {alerts && alerts.length > 0 && (
+              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] leading-none rounded-full px-1.5 py-0.5">
+                {alerts.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={refreshNow}
             className="px-3 py-1 text-xs uppercase tracking-wider border border-gray-300 text-gray-700 rounded-sm hover:bg-gray-100"
           >
-            Editar ajustes
+            Actualizar ahora
           </button>
-        )}
+          {editMode ? (
+            <>
+              <button
+                onClick={() => {
+                  setEditMode(false);
+                  setFormData({});
+                }}
+                className="px-3 py-1 text-xs uppercase tracking-wider border border-gray-300 text-gray-700 rounded-sm hover:bg-gray-100"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="px-3 py-1 text-xs uppercase tracking-wider bg-blue-500 text-white rounded-sm hover:bg-blue-600 disabled:opacity-50"
+              >
+                {saving ? "Guardando..." : "Guardar"}
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setEditMode(true)}
+              className="px-3 py-1 text-xs uppercase tracking-wider border border-gray-300 text-gray-700 rounded-sm hover:bg-gray-100"
+            >
+              Editar ajustes
+            </button>
+          )}
+        </div>
       </div>
 
       {open &&
@@ -293,201 +437,12 @@ export function AmbientePanel({
                     className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
                   />
                 </div>
-                <div className="flex flex-col gap-1 text-sm text-gray-700">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={formData.extractor_top ?? indoor.extractor_top}
-                      onChange={(e) => handleChange("extractor_top", e.target.checked)}
-                    />
-                    Extractor arriba
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={formData.extractor_bottom ?? indoor.extractor_bottom}
-                      onChange={(e) => handleChange("extractor_bottom", e.target.checked)}
-                    />
-                    Extractor abajo
-                  </label>
-                </div>
-                <div className="flex flex-col gap-1 text-sm text-gray-700">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={formData.fan ?? indoor.fan}
-                      onChange={(e) => handleChange("fan", e.target.checked)}
-                    />
-                    Ventilador
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={formData.humidifier ?? indoor.humidifier}
-                      onChange={(e) => handleChange("humidifier", e.target.checked)}
-                    />
-                    Humidificador
-                  </label>
-                </div>
               </div>
             </div>
 
             <div>
-              <p className="field-label">Humidificador — umbrales</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Encender si HR &lt;</label>
-                  <input
-                    type="number"
-                    step="1"
-                    value={
-                      formData.humidifier_on_below_humidity ??
-                      indoor.humidifier_on_below_humidity ??
-                      ""
-                    }
-                    onChange={(e) =>
-                      handleChange(
-                        "humidifier_on_below_humidity",
-                        e.target.value ? parseFloat(e.target.value) : null
-                      )
-                    }
-                    className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Apagar si HR &gt;</label>
-                  <input
-                    type="number"
-                    step="1"
-                    value={
-                      formData.humidifier_off_above_humidity ??
-                      indoor.humidifier_off_above_humidity ??
-                      ""
-                    }
-                    onChange={(e) =>
-                      handleChange(
-                        "humidifier_off_above_humidity",
-                        e.target.value ? parseFloat(e.target.value) : null
-                      )
-                    }
-                    className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Encender si temp &gt;</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={
-                      formData.humidifier_on_above_temp ?? indoor.humidifier_on_above_temp ?? ""
-                    }
-                    onChange={(e) =>
-                      handleChange(
-                        "humidifier_on_above_temp",
-                        e.target.value ? parseFloat(e.target.value) : null
-                      )
-                    }
-                    className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Apagar si temp &lt;</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={
-                      formData.humidifier_off_below_temp ?? indoor.humidifier_off_below_temp ?? ""
-                    }
-                    onChange={(e) =>
-                      handleChange(
-                        "humidifier_off_below_temp",
-                        e.target.value ? parseFloat(e.target.value) : null
-                      )
-                    }
-                    className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <p className="field-label">Aire acondicionado — umbrales</p>
+              <p className="field-label">Luz — horario</p>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Encender si temp &gt;</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={formData.ac_on_above_temp ?? indoor.ac_on_above_temp ?? ""}
-                    onChange={(e) =>
-                      handleChange(
-                        "ac_on_above_temp",
-                        e.target.value ? parseFloat(e.target.value) : null
-                      )
-                    }
-                    className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Apagar si temp &lt;</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={formData.ac_off_below_temp ?? indoor.ac_off_below_temp ?? ""}
-                    onChange={(e) =>
-                      handleChange(
-                        "ac_off_below_temp",
-                        e.target.value ? parseFloat(e.target.value) : null
-                      )
-                    }
-                    className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Modo HVAC</label>
-                  <select
-                    value={formData.ac_hvac_mode ?? indoor.ac_hvac_mode ?? "cool"}
-                    onChange={(e) => handleChange("ac_hvac_mode", e.target.value)}
-                    className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="cool">Frío (cool)</option>
-                    <option value="heat">Calor (heat)</option>
-                    <option value="fan">Ventilador (fan)</option>
-                    <option value="dry">Deshumidificar (dry)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <p className="field-label">Luz</p>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Altura (cm)</label>
-                  <input
-                    type="number"
-                    step="1"
-                    value={formData.light_height_cm ?? indoor.light_height_cm ?? ""}
-                    onChange={(e) =>
-                      handleChange(
-                        "light_height_cm",
-                        e.target.value ? parseInt(e.target.value) : null
-                      )
-                    }
-                    className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Potencia (%)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={formData.light_power_pct ?? indoor.light_power_pct ?? ""}
-                    onChange={(e) => handleChange("light_power_pct", parseInt(e.target.value))}
-                    className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded-sm text-sm text-gray-800 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Horario</label>
                   <input
@@ -502,132 +457,180 @@ export function AmbientePanel({
             </div>
           </div>
         ) : (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {readingCards.map((card) => (
-                <ReadingCard
-                  key={card.key}
-                  label={card.label}
-                  value={card.value}
-                  at={card.at}
-                  source={card.source}
-                  min={card.min}
-                  max={card.max}
-                  unit={card.unit}
-                  step={card.step}
-                  digits={card.digits}
-                  status={rangeStatus(card.value, card.min, card.max)}
-                  saving={savingField === card.key}
-                  onSave={card.save}
+          <div className="space-y-6">
+            {/* 1. Clima + Aire/Humidificador */}
+            <div>
+              <p className="field-label">Clima & Actuadores</p>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {climateCards.map((card) => (
+                  <ReadingCard
+                    key={card.key}
+                    label={card.label}
+                    value={card.value}
+                    at={card.at ?? indoor.updated_at}
+                    source={card.source}
+                    min={card.min}
+                    max={card.max}
+                    unit={card.unit}
+                    step={card.step}
+                    digits={card.digits}
+                    size="lg"
+                    status={rangeStatus(card.value, card.min, card.max)}
+                    saving={savingField === card.key}
+                    onSave={card.save}
+                    spark={seriesMap[`reading:${card.key}`]?.points}
+                    onChart={READING_CHART[card.key] ? () => openReadingChart(card) : undefined}
+                  />
+                ))}
+                <DeviceCard
+                  title="Aire"
+                  active={ac.active}
+                  manual={ac.manual}
+                  lastContact={lastContact}
+                  spark={seriesMap["device:ac"]?.points}
+                  onToggle={() => toggleDevice("ac")}
+                  onChart={() => openDeviceChart("ac", "Aire", "Aire acondicionado")}
                 />
-              ))}
-
-              <div
-                className={`border rounded-sm p-3 ${
-                  scheduleStatus === "ok" ? "border-blue-500 bg-blue-50" : "border-gray-200 bg-gray-50"
-                }`}
-              >
-                <p className="text-[10px] uppercase tracking-widest text-gray-500">Horario luz</p>
-                <p className="text-2xl font-bold leading-none mt-2 text-gray-800">
-                  {indoor.light_schedule || "—"}
-                </p>
-                <p className="text-[10px] uppercase tracking-widest text-gray-500 mt-1">
-                  ideal {target?.light_schedule || "—"}
-                </p>
-              </div>
-
-              <div className="border border-gray-200 rounded-sm p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[10px] uppercase tracking-widest text-gray-500">
-                    Humidificador
-                  </p>
-                  <select
-                    value={indoor.humidifier_mode}
-                    onChange={(e) => handleSetMode("humidifier_mode", e.target.value)}
-                    className="text-[10px] uppercase tracking-wider bg-gray-50 border border-gray-300 rounded-sm px-1 py-0.5"
-                  >
-                    <option value="auto">auto</option>
-                    <option value="manual">manual</option>
-                    <option value="off">off</option>
-                  </select>
-                </div>
-                {indoor.humidifier_mode === "manual" ? (
-                  <button
-                    onClick={handleToggleHumidifier}
-                    className={`mt-2 px-3 py-1 rounded-sm text-xs uppercase tracking-wider ${
-                      indoor.humidifier
-                        ? "bg-blue-500 text-white hover:bg-blue-600"
-                        : "border border-gray-300 text-gray-600 hover:bg-gray-100"
-                    }`}
-                  >
-                    {indoor.humidifier ? "● ON" : "○ OFF"}
-                  </button>
-                ) : indoor.humidifier_mode === "auto" ? (
-                  <>
-                    <p
-                      className={`text-2xl font-bold leading-none mt-2 ${
-                        recommendation === "on" ? "text-blue-500" : "text-gray-500"
-                      }`}
-                    >
-                      {recommendation === "on" ? "ON" : recommendation === "off" ? "OFF" : "—"}
-                    </p>
-                    <p className="text-[10px] uppercase tracking-widest text-gray-500 mt-1">
-                      según umbrales
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-2xl font-bold leading-none mt-2 text-gray-400">OFF</p>
-                )}
-              </div>
-
-              <div className="border border-gray-200 rounded-sm p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[10px] uppercase tracking-widest text-gray-500">Aire</p>
-                  <select
-                    value={indoor.ac_mode}
-                    onChange={(e) => handleSetMode("ac_mode", e.target.value)}
-                    className="text-[10px] uppercase tracking-wider bg-gray-50 border border-gray-300 rounded-sm px-1 py-0.5"
-                  >
-                    <option value="auto">auto</option>
-                    <option value="manual">manual</option>
-                    <option value="off">off</option>
-                  </select>
-                </div>
-                {indoor.ac_mode === "manual" ? (
-                  <button
-                    onClick={handleToggleAc}
-                    className={`mt-2 px-3 py-1 rounded-sm text-xs uppercase tracking-wider ${
-                      indoor.ac
-                        ? "bg-blue-500 text-white hover:bg-blue-600"
-                        : "border border-gray-300 text-gray-600 hover:bg-gray-100"
-                    }`}
-                  >
-                    {indoor.ac ? "● ON" : "○ OFF"}
-                  </button>
-                ) : indoor.ac_mode === "auto" ? (
-                  <>
-                    <p
-                      className={`text-2xl font-bold leading-none mt-2 ${
-                        acRecommendation === "on" ? "text-blue-500" : "text-gray-500"
-                      }`}
-                    >
-                      {acRecommendation === "on"
-                        ? "ON"
-                        : acRecommendation === "off"
-                        ? "OFF"
-                        : "—"}
-                    </p>
-                    <p className="text-[10px] uppercase tracking-widest text-gray-500 mt-1">
-                      según temperatura
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-2xl font-bold leading-none mt-2 text-gray-400">OFF</p>
-                )}
+                <DeviceCard
+                  title="Humidificador"
+                  active={humidifier.active}
+                  manual={humidifier.manual}
+                  lastContact={lastContact}
+                  spark={seriesMap["device:humidifier"]?.points}
+                  onToggle={() => toggleDevice("humidifier")}
+                  onChart={() => openDeviceChart("humidifier", "Humidificador", "Humidificador")}
+                />
               </div>
             </div>
-          </>
+
+            {/* 2. Ventiladores + Bomba */}
+            <div>
+              <p className="field-label">Ventiladores & Bomba</p>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <DeviceCard
+                  title="Extractor"
+                  active={extractor.active}
+                  manual={extractor.manual}
+                  lastContact={lastContact}
+                  onToggle={() => toggleDevice("extractor_top")}
+                />
+                <DeviceCard
+                  title="Intractor"
+                  active={intractor.active}
+                  manual={intractor.manual}
+                  lastContact={lastContact}
+                  onToggle={() => toggleDevice("extractor_bottom")}
+                />
+                <DeviceCard
+                  title="Ventilador interno"
+                  active={fan.active}
+                  manual={fan.manual}
+                  lastContact={lastContact}
+                  onToggle={() => toggleDevice("fan")}
+                />
+                <DeviceCard
+                  title="Bomba de riego"
+                  active={pump.active}
+                  manual={pump.manual}
+                  lastContact={lastContact}
+                  onToggle={() => toggleDevice("pump")}
+                />
+              </div>
+            </div>
+
+            {/* 3. Riego + Luz */}
+            <div>
+              <p className="field-label">Riego & Luz</p>
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                <div className="border border-gray-200 rounded-sm p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="led bg-gray-300" />
+                    <p className="text-[10px] uppercase tracking-widest text-gray-500">
+                      Último riego
+                    </p>
+                  </div>
+                  <p className="text-2xl font-bold leading-none mt-2 text-gray-800">
+                    {lastWatering ? `${lastWatering.liters} L` : "—"}
+                  </p>
+                  <p className="text-[10px] uppercase tracking-widest text-gray-500 mt-1">
+                    {lastWatering
+                      ? `${lastWatering.plants.length} planta(s)` +
+                        (lastWatering.ec != null ? ` · EC ${lastWatering.ec}` : "") +
+                        (lastWatering.ph != null ? ` · pH ${lastWatering.ph}` : "")
+                      : "sin riegos registrados"}
+                  </p>
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    {lastWatering ? `fue el ${fmtDateTime(lastWatering.event_ts)}` : "—"}
+                  </p>
+                </div>
+
+                {lightCards.map((card) => (
+                  <ReadingCard
+                    key={card.key}
+                    label={card.label}
+                    value={card.value}
+                    at={card.at ?? indoor.updated_at}
+                    source={card.source}
+                    min={card.min}
+                    max={card.max}
+                    unit={card.unit}
+                    step={card.step}
+                    digits={card.digits}
+                    status={rangeStatus(card.value, card.min, card.max)}
+                    saving={savingField === card.key}
+                    onSave={card.save}
+                    spark={seriesMap[`reading:${card.key}`]?.points}
+                    onChart={READING_CHART[card.key] ? () => openReadingChart(card) : undefined}
+                  />
+                ))}
+
+                <div
+                  className={`border rounded-sm p-3 ${
+                    scheduleStatus === "ok"
+                      ? "border-blue-500 bg-blue-50"
+                      : "border-gray-200 bg-gray-50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`led ${
+                        scheduleStatus === "ok" ? "bg-green-500" : "bg-gray-300"
+                      }`}
+                    />
+                    <p className="text-[10px] uppercase tracking-widest text-gray-500">
+                      Horario luz
+                    </p>
+                  </div>
+                  <p className="text-2xl font-bold leading-none mt-2 text-gray-800">
+                    {indoor.light_schedule || "—"}
+                  </p>
+                  <p className="text-[10px] uppercase tracking-widest text-gray-500 mt-1">
+                    ideal {target?.light_schedule || "—"}
+                  </p>
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    última medición: {fmtDateTime(indoor.updated_at)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         ))}
+
+      {chart && (
+        <MetricChart
+          title={chart.label}
+          unit={chart.kind === "reading" ? chart.unit : undefined}
+          points={chartData.points}
+          step={chart.kind === "device"}
+          color={chart.kind === "device" ? "#FFB000" : "#7CE38B"}
+          simulated={chartData.simulated}
+          onClose={() => setChart(null)}
+        />
+      )}
+
+      {alertsOpen && (
+        <AlertsModal indoorId={indoor.id} onClose={() => setAlertsOpen(false)} />
+      )}
     </div>
   );
 }
