@@ -54,7 +54,7 @@ sudo journalctl -u plantulas-bridge -f   # ver logs
 ```
 
 ## Cómo funciona (solo lectura)
-Cada `INTERVAL_SECONDS` (por defecto 60):
+Cada `INTERVAL_SECONDS` (por defecto 600; no bajarlo de 600 — el scale-to-zero de Neon es a los 5 min, así que por debajo de eso la DB no llega a suspenderse entre lecturas y el compute queda activo 24/7, lo que sale caro):
 1. Lee temp/humedad de HA y las sube (`/api/devices/telemetry`) → queda como medición (historial para gráficos).
 2. Lee el estado on/off de los equipos y lo reporta (`/api/devices/state`).
 

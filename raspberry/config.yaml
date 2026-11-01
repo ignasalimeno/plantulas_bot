@@ -11,7 +11,7 @@ init: false
 options:
   backend_url: https://plantulas-bot.onrender.com
   device_token: ""
-  interval_seconds: 60
+  interval_seconds: 600
 schema:
   backend_url: str
   device_token: str

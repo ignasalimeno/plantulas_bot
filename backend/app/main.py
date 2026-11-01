@@ -13,7 +13,9 @@ from app.services import alert_service
 logger = logging.getLogger("plantulas.alerts")
 
 # How often the background job evaluates alert rules.
-ALERT_INTERVAL_SECONDS = 300
+# Kept well above Neon's scale-to-zero window (5 min default) so the DB
+# compute can actually suspend between checks instead of staying always-on.
+ALERT_INTERVAL_SECONDS = 3600
 
 
 def _evaluate_all_alerts() -> None:
